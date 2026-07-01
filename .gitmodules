@@ -1,0 +1,3 @@
+[submodule "workout-tracker"]
+	path = workout-tracker
+	url = git@github.com:zoidz123/workout-tracker.git

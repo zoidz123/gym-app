@@ -1,0 +1,23 @@
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+*.xcscmblueprint
+
+# Swift Package Manager
+.build/
+Packages/
+Package.resolved
+
+# App archives and exports
+*.xcarchive
+*.ipa
+*.dSYM
+
+# Local screenshots and simulator captures
+/gymapp-*.png
+/simulator_screenshot_*.png
+
+# macOS
+.DS_Store
