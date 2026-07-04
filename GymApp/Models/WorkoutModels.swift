@@ -37,6 +37,14 @@ enum LoadUnit: String, Codable, CaseIterable, Identifiable {
     var usesLoadValue: Bool {
         self != .bodyweight && self != .custom
     }
+
+    var isTime: Bool {
+        self == .seconds || self == .minutes
+    }
+
+    var entryPickerLabel: String {
+        isTime ? "time" : label
+    }
 }
 
 struct LoggedSet: Identifiable, Codable, Equatable {

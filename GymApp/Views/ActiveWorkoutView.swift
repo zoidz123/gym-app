@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ActiveWorkoutView: View {
     @EnvironmentObject private var store: WorkoutStore
@@ -13,6 +14,8 @@ struct ActiveWorkoutView: View {
     @State private var isAddingSuperset = false
     @State private var isConfirmingDiscard = false
     @State private var scrollPosition: String?
+    @State private var targetedBlockId: String?
+    @State private var draggedBlockId: String?
 
     var body: some View {
         ScrollView {
@@ -21,17 +24,7 @@ struct ActiveWorkoutView: View {
                     .id("header")
 
                 ForEach(workoutBlocks) { block in
-                    switch block.kind {
-                    case .single(let exerciseId):
-                        ExerciseCard(
-                            exercise: binding(for: exerciseId),
-                            onRemove: { removeExercise(id: exerciseId) }
-                        )
-                        .id(block.id)
-                    case .superset(let exerciseIds):
-                        supersetBlock(exerciseIds: exerciseIds)
-                            .id(block.id)
-                    }
+                    workoutBlockView(block)
                 }
 
                 HStack(spacing: 12) {
@@ -160,6 +153,85 @@ struct ActiveWorkoutView: View {
         }
     }
 
+    @ViewBuilder
+    private func workoutBlockView(_ block: WorkoutBlock) -> some View {
+        switch block.kind {
+        case .single(let exerciseId):
+            ExerciseCard(
+                exercise: binding(for: exerciseId),
+                onRemove: { removeExercise(id: exerciseId) },
+                trailingHeaderControl: AnyView(dragHandle(for: block))
+            )
+            .workoutBlockDropTarget(
+                block,
+                draggedBlockId: $draggedBlockId,
+                targetedBlockId: $targetedBlockId,
+                moveBlock: moveBlock
+            )
+            .id(block.id)
+        case .superset(let exerciseIds):
+            supersetBlock(exerciseIds: exerciseIds, block: block)
+                .workoutBlockDropTarget(
+                    block,
+                    draggedBlockId: $draggedBlockId,
+                    targetedBlockId: $targetedBlockId,
+                    moveBlock: moveBlock
+                )
+                .id(block.id)
+        }
+    }
+
+    private func supersetBlock(exerciseIds: [UUID], block: WorkoutBlock) -> some View {
+        AppCard {
+            HStack(alignment: .center, spacing: 8) {
+                Pill("Superset")
+                Spacer()
+                dragHandle(for: block)
+            }
+
+            VStack(spacing: 14) {
+                ForEach(exerciseIds, id: \.self) { exerciseId in
+                    ExerciseLoggingContent(
+                        exercise: binding(for: exerciseId),
+                        isInsideSuperset: true,
+                        onRemove: { removeExercise(id: exerciseId) }
+                    )
+
+                    if exerciseId != exerciseIds.last {
+                        Divider()
+                    }
+                }
+            }
+        }
+    }
+
+    private func dragHandle(for block: WorkoutBlock) -> some View {
+        Image(systemName: "line.3.horizontal")
+            .font(.callout.weight(.bold))
+            .foregroundStyle(AppTheme.textSecondary)
+            .frame(width: 38, height: 38)
+            .background(AppTheme.surface.opacity(0.96))
+            .clipShape(Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(AppTheme.chipBorder, lineWidth: 1)
+            }
+            .contentShape(Capsule())
+            .onDrag {
+                draggedBlockId = block.id
+                return NSItemProvider(object: block.id as NSString)
+            } preview: {
+                Text("Move")
+                    .font(.headline)
+                    .foregroundStyle(AppTheme.ink)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 12)
+                    .background(AppTheme.surface)
+                    .clipShape(Capsule())
+            }
+            .accessibilityLabel("Move exercise")
+    }
+
     private var workoutBlocks: [WorkoutBlock] {
         var blocks: [WorkoutBlock] = []
         var emittedGroups = Set<UUID>()
@@ -222,6 +294,39 @@ struct ActiveWorkoutView: View {
         }
     }
 
+    private func moveBlock(_ draggedBlockId: String, before targetBlockId: String) {
+        guard draggedBlockId != targetBlockId else { return }
+        var blocks = workoutBlocks
+
+        guard let sourceIndex = blocks.firstIndex(where: { $0.id == draggedBlockId }),
+              let targetIndex = blocks.firstIndex(where: { $0.id == targetBlockId }) else {
+            return
+        }
+
+        withAnimation(.snappy) {
+            let draggedBlock = blocks.remove(at: sourceIndex)
+            let destinationIndex = sourceIndex < targetIndex ? targetIndex : targetIndex
+            blocks.insert(draggedBlock, at: destinationIndex)
+
+            applyBlockOrder(blocks)
+        }
+    }
+
+    private func applyBlockOrder(_ blocks: [WorkoutBlock]) {
+        var nextOrder = 0
+
+        for block in blocks {
+            for exerciseId in block.exerciseIds {
+                guard let exerciseIndex = session.exercises.firstIndex(where: { $0.id == exerciseId }) else {
+                    continue
+                }
+
+                session.exercises[exerciseIndex].order = nextOrder
+                nextOrder += 1
+            }
+        }
+    }
+
     private func finishWorkout() {
         if let onFinish {
             onFinish()
@@ -247,4 +352,66 @@ private struct WorkoutBlock: Identifiable {
 
     let id: String
     let kind: Kind
+
+    var exerciseIds: [UUID] {
+        switch kind {
+        case .single(let exerciseId):
+            return [exerciseId]
+        case .superset(let exerciseIds):
+            return exerciseIds
+        }
+    }
+}
+
+private extension View {
+    func workoutBlockDropTarget(
+        _ block: WorkoutBlock,
+        draggedBlockId: Binding<String?>,
+        targetedBlockId: Binding<String?>,
+        moveBlock: @escaping (String, String) -> Void
+    ) -> some View {
+        self
+            .opacity(targetedBlockId.wrappedValue == block.id ? 0.72 : 1)
+            .onDrop(
+                of: [UTType.text],
+                delegate: WorkoutBlockDropDelegate(
+                    targetBlock: block,
+                    draggedBlockId: draggedBlockId,
+                    targetedBlockId: targetedBlockId,
+                    moveBlock: moveBlock
+                )
+            )
+    }
+}
+
+private struct WorkoutBlockDropDelegate: DropDelegate {
+    let targetBlock: WorkoutBlock
+    @Binding var draggedBlockId: String?
+    @Binding var targetedBlockId: String?
+    let moveBlock: (String, String) -> Void
+
+    func dropEntered(info: DropInfo) {
+        guard let draggedBlockId, draggedBlockId != targetBlock.id else {
+            return
+        }
+
+        targetedBlockId = targetBlock.id
+        moveBlock(draggedBlockId, targetBlock.id)
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggedBlockId = nil
+        targetedBlockId = nil
+        return true
+    }
+
+    func dropExited(info: DropInfo) {
+        if targetedBlockId == targetBlock.id {
+            targetedBlockId = nil
+        }
+    }
 }

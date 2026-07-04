@@ -3,6 +3,7 @@ import SwiftUI
 struct PlanView: View {
     @EnvironmentObject private var store: WorkoutStore
     @State private var expandedTemplateIds = Set<UUID>()
+    @State private var editingTemplateId: UUID?
 
     var body: some View {
         ScrollView {
@@ -14,7 +15,8 @@ struct PlanView: View {
                         template: template,
                         blocks: planBlocks(for: template),
                         isExpanded: expandedTemplateIds.contains(template.id),
-                        toggle: { toggle(template.id) }
+                        toggle: { toggle(template.id) },
+                        edit: { editingTemplateId = template.id }
                     )
                 }
             }
@@ -22,6 +24,34 @@ struct PlanView: View {
             .padding(.bottom)
         }
         .background(AppTheme.screenBackground)
+        .sheet(isPresented: isEditingTemplate) {
+            if let templateBinding = bindingForEditingTemplate {
+                PlanTemplateEditorSheet(
+                    template: templateBinding,
+                    exerciseDefinitions: store.data.exerciseDefinitions
+                )
+            }
+        }
+    }
+
+    private var isEditingTemplate: Binding<Bool> {
+        Binding(
+            get: { editingTemplateId != nil },
+            set: { isPresented in
+                if !isPresented {
+                    editingTemplateId = nil
+                }
+            }
+        )
+    }
+
+    private var bindingForEditingTemplate: Binding<WorkoutTemplate>? {
+        guard let editingTemplateId,
+              let index = store.data.templates.firstIndex(where: { $0.id == editingTemplateId }) else {
+            return nil
+        }
+
+        return $store.data.templates[index]
     }
 
     private func toggle(_ id: UUID) {
@@ -68,6 +98,7 @@ private struct PlanTemplateCard: View {
     let blocks: [PlanBlock]
     let isExpanded: Bool
     let toggle: () -> Void
+    let edit: () -> Void
 
     var body: some View {
         AppCard {
@@ -84,6 +115,17 @@ private struct PlanTemplateCard: View {
                     }
 
                     Spacer()
+
+                    Button(action: edit) {
+                        Image(systemName: "pencil")
+                            .font(.headline.weight(.bold))
+                            .frame(width: 38, height: 38)
+                            .background(AppTheme.surface)
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(AppTheme.accent)
+                    .accessibilityLabel("Edit \(template.name) plan")
 
                     Image(systemName: "chevron.down")
                         .font(.headline.weight(.bold))
@@ -154,6 +196,146 @@ private struct PlanExerciseRow: View {
         .padding(12)
         .background(AppTheme.rowBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+private struct PlanTemplateEditorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var template: WorkoutTemplate
+    let exerciseDefinitions: [ExerciseDefinition]
+
+    @State private var newExerciseName = ""
+    @State private var newExerciseSetCount = 3
+    @State private var newExerciseReps = "8-12 reps"
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Workout") {
+                    TextField("Workout name", text: $template.name)
+                }
+
+                Section("Exercises") {
+                    ForEach($template.exercises) { $exercise in
+                        PlanTemplateExerciseEditorRow(
+                            exercise: $exercise,
+                            setCount: setCountBinding(for: $exercise)
+                        )
+                    }
+                    .onMove(perform: moveExercises)
+                    .onDelete(perform: deleteExercises)
+                }
+
+                Section("Add Exercise") {
+                    ExerciseSearchField(
+                        title: "Exercise",
+                        placeholder: "Exercise name",
+                        text: $newExerciseName,
+                        exerciseDefinitions: exerciseDefinitions
+                    )
+
+                    Stepper("\(newExerciseSetCount) sets", value: $newExerciseSetCount, in: 1...10)
+                    TextField("Target reps", text: $newExerciseReps)
+
+                    Button {
+                        addExercise()
+                    } label: {
+                        Label("Add to Plan", systemImage: "plus")
+                    }
+                    .disabled(newExerciseName.trimmed.isEmpty)
+                }
+            }
+            .navigationTitle("Edit \(template.name)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") {
+                        normalizeExerciseOrders()
+                        dismiss()
+                    }
+                }
+
+                ToolbarItem(placement: .primaryAction) {
+                    EditButton()
+                }
+            }
+            .onAppear {
+                sortExercises()
+            }
+        }
+    }
+
+    private func setCountBinding(for exercise: Binding<TemplateExercise>) -> Binding<Int> {
+        Binding(
+            get: { exercise.wrappedValue.targetSetCount },
+            set: { newValue in
+                exercise.wrappedValue.targetSetCount = newValue
+                exercise.wrappedValue.targetSetsText = "\(newValue) sets"
+            }
+        )
+    }
+
+    private func addExercise() {
+        template.exercises.append(
+            TemplateExercise(
+                name: ExerciseSearch.canonicalName(for: newExerciseName, in: exerciseDefinitions),
+                order: template.exercises.count,
+                targetSetsText: "\(newExerciseSetCount) sets",
+                targetRepsText: newExerciseReps.trimmed,
+                targetSetCount: newExerciseSetCount,
+                supersetGroupId: nil,
+                supersetName: nil
+            )
+        )
+
+        newExerciseName = ""
+        newExerciseSetCount = 3
+        newExerciseReps = "8-12 reps"
+        normalizeExerciseOrders()
+    }
+
+    private func moveExercises(from source: IndexSet, to destination: Int) {
+        template.exercises.move(fromOffsets: source, toOffset: destination)
+        normalizeExerciseOrders()
+    }
+
+    private func deleteExercises(at offsets: IndexSet) {
+        template.exercises.remove(atOffsets: offsets)
+        normalizeExerciseOrders()
+    }
+
+    private func sortExercises() {
+        template.exercises.sort { $0.order < $1.order }
+        normalizeExerciseOrders()
+    }
+
+    private func normalizeExerciseOrders() {
+        for index in template.exercises.indices {
+            template.exercises[index].order = index
+        }
+    }
+}
+
+private struct PlanTemplateExerciseEditorRow: View {
+    @Binding var exercise: TemplateExercise
+    let setCount: Binding<Int>
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TextField("Exercise", text: $exercise.name)
+                .font(.body.weight(.semibold))
+
+            HStack {
+                Stepper("\(setCount.wrappedValue) sets", value: setCount, in: 1...10)
+
+                TextField("Reps", text: $exercise.targetRepsText)
+                    .multilineTextAlignment(.trailing)
+                    .textInputAutocapitalization(.never)
+            }
+            .font(.subheadline)
+            .foregroundStyle(AppTheme.textSecondary)
+        }
+        .padding(.vertical, 4)
     }
 }
 

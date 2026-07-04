@@ -25,8 +25,8 @@ struct AddExerciseSheet: View {
                     TextField("Target reps", text: $targetReps)
 
                     Picker("Default unit", selection: $unit) {
-                        ForEach([LoadUnit.lb, .kg, .bodyweight, .machine]) { unit in
-                            Text(unit.label).tag(unit)
+                        ForEach([LoadUnit.lb, .kg, .bodyweight, .seconds]) { unit in
+                            Text(unit.entryPickerLabel).tag(unit)
                         }
                     }
                 }

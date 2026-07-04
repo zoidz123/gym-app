@@ -3,13 +3,15 @@ import SwiftUI
 struct ExerciseCard: View {
     @Binding var exercise: LoggedExercise
     let onRemove: () -> Void
+    var trailingHeaderControl: AnyView?
 
     var body: some View {
         AppCard {
             ExerciseLoggingContent(
                 exercise: $exercise,
                 isInsideSuperset: false,
-                onRemove: onRemove
+                onRemove: onRemove,
+                trailingHeaderControl: trailingHeaderControl
             )
         }
     }
@@ -19,11 +21,12 @@ struct ExerciseLoggingContent: View {
     @Binding var exercise: LoggedExercise
     let isInsideSuperset: Bool
     let onRemove: () -> Void
+    var trailingHeaderControl: AnyView?
     @State private var isConfirmingRemove = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .center, spacing: 8) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(exercise.name)
                         .font(isInsideSuperset ? .headline : .title3.weight(.semibold))
@@ -32,13 +35,18 @@ struct ExerciseLoggingContent: View {
 
                 Spacer()
 
+                if let trailingHeaderControl {
+                    trailingHeaderControl
+                }
+
                 Button(role: .destructive) {
                     isConfirmingRemove = true
                 } label: {
                     Image(systemName: "trash")
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(AppTheme.textSecondary)
-                        .frame(width: 36, height: 32)
+                        .frame(width: 38, height: 38)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Remove \(exercise.name)")

@@ -64,17 +64,14 @@ struct SetRowEditor: View {
         .background(set.isCompleted ? AppTheme.successSoft : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .onTapGesture {
-            set.isCompleted.toggle()
-        }
         .sheet(isPresented: $isEditingWeight) {
             SetWeightSheet(set: $set)
-                .presentationDetents([.height(360), .medium])
-                .presentationDragIndicator(.visible)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.hidden)
         }
         .sheet(isPresented: $isEditingReps) {
             SetRepsSheet(set: $set, metric: metric)
-                .presentationDetents([.height(250)])
+                .presentationDetents([.height(320), .medium])
                 .presentationDragIndicator(.visible)
         }
     }
@@ -97,7 +94,7 @@ struct SetRowEditor: View {
 
     private var weightSummary: String {
         if set.loadValue == nil && set.loadUnit != .bodyweight {
-            return "Weight"
+            return set.loadUnit.isTime ? "Time" : "Weight"
         }
 
         return set.loadLabel
@@ -244,7 +241,9 @@ struct SetRepsSheet: View {
         .background(AppTheme.screenBackground)
         .onAppear {
             repsText = set.repsValue.map(String.init) ?? ""
-            isFocused = true
+            DispatchQueue.main.async {
+                isFocused = true
+            }
         }
     }
 
@@ -267,30 +266,47 @@ struct SetRepsSheet: View {
 struct SetWeightSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var set: LoggedSet
+    @State private var draftLoadValue: Double?
+    @State private var draftLoadUnit: LoadUnit?
     @FocusState private var isFocused: Bool
 
     var body: some View {
         VStack(spacing: 16) {
-            SheetHeader(title: "Weight", subtitle: "last \(set.previousLabel)") {
+            Capsule()
+                .fill(AppTheme.textTertiary.opacity(0.45))
+                .frame(width: 56, height: 6)
+                .padding(.top, 4)
+                .padding(.bottom, 2)
+
+            SheetHeader(title: sheetTitle, subtitle: "last \(set.previousLabel)") {
                 dismiss()
             }
 
             Picker("Unit", selection: unitBinding) {
-                ForEach([LoadUnit.lb, .kg, .bodyweight, .machine]) { unit in
-                    Text(unit.label).tag(unit)
+                ForEach([LoadUnit.lb, .kg, .bodyweight, .seconds]) { unit in
+                    Text(unit.entryPickerLabel).tag(unit)
                 }
             }
             .pickerStyle(.segmented)
+
+            if set.loadUnit.isTime {
+                Picker("Time Unit", selection: timeUnitBinding) {
+                    Text("sec").tag(LoadUnit.seconds)
+                    Text("min").tag(LoadUnit.minutes)
+                }
+                .pickerStyle(.segmented)
+            }
 
             weightEditor
 
             if set.previousLoadValue != nil || !set.previousLoadText.isEmpty {
                 Button {
-                    set.loadValue = set.previousLoadValue
-                    set.loadUnit = set.previousLoadUnit ?? set.loadUnit
-                    set.isCompleted = true
+                    draftLoadValue = set.previousLoadValue
+                    draftLoadUnit = set.previousLoadUnit ?? activeLoadUnit
+                    save()
+                    dismiss()
                 } label: {
-                    Label("Use Last Weight", systemImage: "arrow.uturn.backward")
+                    Label(useLastTitle, systemImage: "arrow.uturn.backward")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                 }
@@ -299,10 +315,10 @@ struct SetWeightSheet: View {
             }
 
             Button {
-                set.isCompleted = true
+                save()
                 dismiss()
             } label: {
-                Text("Save Weight")
+                Text(saveTitle)
                     .font(.headline)
                     .frame(maxWidth: .infinity)
             }
@@ -311,12 +327,33 @@ struct SetWeightSheet: View {
             .tint(AppTheme.accent)
         }
         .padding(.horizontal, 20)
-        .padding(.top, 18)
+        .padding(.top, 12)
         .padding(.bottom, 22)
         .background(AppTheme.screenBackground)
         .onAppear {
-            isFocused = set.loadUnit.usesLoadValue
+            draftLoadValue = set.loadValue
+            draftLoadUnit = set.loadUnit
+
+            DispatchQueue.main.async {
+                isFocused = activeLoadUnit.usesLoadValue
+            }
         }
+    }
+
+    private var activeLoadUnit: LoadUnit {
+        draftLoadUnit ?? set.loadUnit
+    }
+
+    private var sheetTitle: String {
+        activeLoadUnit.isTime ? "Time" : "Weight"
+    }
+
+    private var saveTitle: String {
+        activeLoadUnit.isTime ? "Save Time" : "Save Weight"
+    }
+
+    private var useLastTitle: String {
+        activeLoadUnit.isTime ? "Use Last Time" : "Use Last Weight"
     }
 
     private var weightEditor: some View {
@@ -328,12 +365,12 @@ struct SetWeightSheet: View {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .stroke(AppTheme.chipBorder, lineWidth: 1)
 
-                if set.loadUnit == .bodyweight {
+                if activeLoadUnit == .bodyweight {
                     Text("Bodyweight")
                         .font(.system(.title3, design: .rounded).weight(.bold))
                         .foregroundStyle(AppTheme.ink)
                 } else {
-                    TextField("Weight", text: loadTextBinding, prompt: Text("0"))
+                    TextField(activeLoadUnit.isTime ? "Time" : "Weight", text: loadTextBinding, prompt: Text("0"))
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.center)
                         .font(.system(size: 58, weight: .bold, design: .rounded))
@@ -345,31 +382,50 @@ struct SetWeightSheet: View {
 
             HStack(spacing: 10) {
                 Button {
-                    set.adjustLoad(by: -set.loadUnit.defaultStep)
+                    adjustDraftLoad(by: -activeLoadUnit.defaultStep)
                 } label: {
                     Image(systemName: "minus")
                         .font(.headline.weight(.bold))
                         .frame(maxWidth: .infinity, minHeight: 48)
                 }
                 .buttonStyle(.bordered)
-                .disabled(!set.loadUnit.usesLoadValue)
+                .disabled(!activeLoadUnit.usesLoadValue)
 
                 Button {
-                    set.adjustLoad(by: set.loadUnit.defaultStep)
+                    adjustDraftLoad(by: activeLoadUnit.defaultStep)
                 } label: {
                     Image(systemName: "plus")
                         .font(.headline.weight(.bold))
                         .frame(maxWidth: .infinity, minHeight: 48)
                 }
                 .buttonStyle(.bordered)
-                .disabled(!set.loadUnit.usesLoadValue)
+                .disabled(!activeLoadUnit.usesLoadValue)
             }
         }
     }
 
     private var unitBinding: Binding<LoadUnit> {
         Binding(
-            get: { set.loadUnit == .custom ? .lb : set.loadUnit },
+            get: {
+                if activeLoadUnit == .custom {
+                    return .lb
+                }
+
+                if activeLoadUnit == .minutes {
+                    return .seconds
+                }
+
+                return activeLoadUnit
+            },
+            set: { newUnit in
+                changeUnit(to: newUnit)
+            }
+        )
+    }
+
+    private var timeUnitBinding: Binding<LoadUnit> {
+        Binding(
+            get: { activeLoadUnit == .minutes ? .minutes : .seconds },
             set: { newUnit in
                 changeUnit(to: newUnit)
             }
@@ -378,32 +434,43 @@ struct SetWeightSheet: View {
 
     private var loadTextBinding: Binding<String> {
         Binding(
-            get: { set.loadValue?.cleanString ?? "" },
+            get: { draftLoadValue?.cleanString ?? "" },
             set: { value in
-                set.loadValue = Double(value)
-                set.isCompleted = true
+                draftLoadValue = Double(value)
             }
         )
     }
 
     private func changeUnit(to newUnit: LoadUnit) {
-        let oldUnit = set.loadUnit
+        let oldUnit = activeLoadUnit
 
-        if let value = set.loadValue {
+        if let value = draftLoadValue {
             if oldUnit == .lb && newUnit == .kg {
-                set.loadValue = (value * 0.45359237 * 10).rounded() / 10
+                draftLoadValue = (value * 0.45359237 * 10).rounded() / 10
             } else if oldUnit == .kg && newUnit == .lb {
-                set.loadValue = (value * 2.20462262).rounded()
+                draftLoadValue = (value * 2.20462262).rounded()
             } else if !newUnit.usesLoadValue {
-                set.loadValue = nil
+                draftLoadValue = nil
             }
         }
 
-        if newUnit.usesLoadValue && set.loadValue == nil {
-            set.loadValue = 0
+        if newUnit.usesLoadValue && draftLoadValue == nil {
+            draftLoadValue = 0
         }
 
-        set.loadUnit = newUnit
+        draftLoadUnit = newUnit
+        isFocused = newUnit.usesLoadValue
+    }
+
+    private func adjustDraftLoad(by delta: Double) {
+        guard activeLoadUnit.usesLoadValue else { return }
+        let currentValue = draftLoadValue ?? 0
+        draftLoadValue = max(0, currentValue + delta)
+    }
+
+    private func save() {
+        set.loadValue = draftLoadValue
+        set.loadUnit = activeLoadUnit
         set.isCompleted = true
     }
 }

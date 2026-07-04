@@ -325,12 +325,12 @@ private struct HistorySetRow: View {
         .padding(.vertical, 10)
         .sheet(isPresented: $isEditingWeight) {
             SetWeightSheet(set: $set)
-                .presentationDetents([.height(360), .medium])
-                .presentationDragIndicator(.visible)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.hidden)
         }
         .sheet(isPresented: $isEditingReps) {
             SetRepsSheet(set: $set, metric: metric)
-                .presentationDetents([.height(250)])
+                .presentationDetents([.height(320), .medium])
                 .presentationDragIndicator(.visible)
         }
     }
