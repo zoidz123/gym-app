@@ -201,7 +201,6 @@ struct SetRepsSheet: View {
     @Binding var set: LoggedSet
     let metric: SetMetricDescriptor
     @State private var repsText = ""
-    @FocusState private var isFocused: Bool
 
     var body: some View {
         VStack(spacing: 16) {
@@ -209,12 +208,8 @@ struct SetRepsSheet: View {
                 dismiss()
             }
 
-            TextField("Reps", text: $repsText, prompt: Text("0"))
-                .keyboardType(.numberPad)
-                .multilineTextAlignment(.center)
-                .font(.system(size: 58, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .focused($isFocused)
+            ImmediateKeypadField(text: $repsText, keyboardType: .numberPad)
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, minHeight: 86)
                 .background(AppTheme.surface)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -238,12 +233,10 @@ struct SetRepsSheet: View {
         .padding(.horizontal, 20)
         .padding(.top, 18)
         .padding(.bottom, 22)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(AppTheme.screenBackground)
         .onAppear {
             repsText = set.repsValue.map(String.init) ?? ""
-            DispatchQueue.main.async {
-                isFocused = true
-            }
         }
     }
 
@@ -268,7 +261,6 @@ struct SetWeightSheet: View {
     @Binding var set: LoggedSet
     @State private var draftLoadValue: Double?
     @State private var draftLoadUnit: LoadUnit?
-    @FocusState private var isFocused: Bool
 
     var body: some View {
         VStack(spacing: 16) {
@@ -329,14 +321,11 @@ struct SetWeightSheet: View {
         .padding(.horizontal, 20)
         .padding(.top, 12)
         .padding(.bottom, 22)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(AppTheme.screenBackground)
         .onAppear {
             draftLoadValue = set.loadValue
             draftLoadUnit = set.loadUnit
-
-            DispatchQueue.main.async {
-                isFocused = activeLoadUnit.usesLoadValue
-            }
         }
     }
 
@@ -370,12 +359,8 @@ struct SetWeightSheet: View {
                         .font(.system(.title3, design: .rounded).weight(.bold))
                         .foregroundStyle(AppTheme.ink)
                 } else {
-                    TextField(activeLoadUnit.isTime ? "Time" : "Weight", text: loadTextBinding, prompt: Text("0"))
-                        .keyboardType(.decimalPad)
-                        .multilineTextAlignment(.center)
-                        .font(.system(size: 58, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .focused($isFocused)
+                    ImmediateKeypadField(text: loadTextBinding, keyboardType: .decimalPad)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .frame(maxWidth: .infinity, minHeight: 86)
@@ -459,7 +444,6 @@ struct SetWeightSheet: View {
         }
 
         draftLoadUnit = newUnit
-        isFocused = newUnit.usesLoadValue
     }
 
     private func adjustDraftLoad(by delta: Double) {
@@ -472,6 +456,70 @@ struct SetWeightSheet: View {
         set.loadValue = draftLoadValue
         set.loadUnit = activeLoadUnit
         set.isCompleted = true
+    }
+}
+
+// UIKit-backed entry field that grabs first responder the moment it joins the
+// window, so the keyboard slides up together with the presenting sheet instead
+// of waiting for the sheet animation to finish (SwiftUI @FocusState defers
+// focus until the presentation transition completes).
+private struct ImmediateKeypadField: UIViewRepresentable {
+    @Binding var text: String
+    let keyboardType: UIKeyboardType
+
+    func makeUIView(context: Context) -> AutoFocusTextField {
+        let field = AutoFocusTextField()
+        field.keyboardType = keyboardType
+        field.textAlignment = .center
+        field.placeholder = "0"
+        field.adjustsFontSizeToFitWidth = true
+        field.minimumFontSize = 30
+
+        var font = UIFont.monospacedDigitSystemFont(ofSize: 58, weight: .bold)
+        if let rounded = font.fontDescriptor.withDesign(.rounded) {
+            font = UIFont(descriptor: rounded, size: 58)
+        }
+        field.font = font
+
+        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        field.addTarget(context.coordinator, action: #selector(Coordinator.textChanged(_:)), for: .editingChanged)
+        return field
+    }
+
+    func updateUIView(_ field: AutoFocusTextField, context: Context) {
+        if field.text != text {
+            field.text = text
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text)
+    }
+
+    final class Coordinator: NSObject {
+        private let text: Binding<String>
+
+        init(text: Binding<String>) {
+            self.text = text
+        }
+
+        @objc func textChanged(_ field: UITextField) {
+            text.wrappedValue = field.text ?? ""
+        }
+    }
+}
+
+private final class AutoFocusTextField: UITextField {
+    private var hasAutoFocused = false
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+
+        if window != nil && !hasAutoFocused {
+            hasAutoFocused = true
+            becomeFirstResponder()
+        }
     }
 }
 
