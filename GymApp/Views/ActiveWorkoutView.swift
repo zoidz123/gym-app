@@ -13,7 +13,6 @@ struct ActiveWorkoutView: View {
     @State private var isAddingExercise = false
     @State private var isAddingSuperset = false
     @State private var isConfirmingDiscard = false
-    @State private var scrollPosition: String?
     @State private var targetedBlockId: String?
     @State private var draggedBlockId: String?
 
@@ -53,9 +52,8 @@ struct ActiveWorkoutView: View {
                 .id("actions")
             }
             .padding()
-            .scrollTargetLayout()
         }
-        .scrollPosition(id: $scrollPosition, anchor: .top)
+        .scrollDismissesKeyboard(.interactively)
         .background(AppTheme.screenBackground)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {

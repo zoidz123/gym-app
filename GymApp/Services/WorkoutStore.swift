@@ -24,12 +24,12 @@ final class WorkoutStore: ObservableObject {
 
         if let storedData = Self.load(from: saveURL) {
             let migratedData = Self.applyingCurrentPlanUpdates(to: storedData)
-            data = Self.clearingIncompleteDefaultReps(in: importer.enrichedExerciseData(for: migratedData))
+            data = importer.enrichedExerciseData(for: migratedData)
             if data != storedData {
                 save()
             }
         } else {
-            data = Self.clearingIncompleteDefaultReps(in: importer.enrichedExerciseData(for: Self.applyingCurrentPlanUpdates(to: importer.loadSeedData())))
+            data = importer.enrichedExerciseData(for: Self.applyingCurrentPlanUpdates(to: importer.loadSeedData()))
             save()
         }
 
@@ -159,8 +159,11 @@ final class WorkoutStore: ObservableObject {
 
     private func makeSession(from template: WorkoutTemplate) -> WorkoutSession {
         let exercises = template.exercises.map { templateExercise -> LoggedExercise in
-            let lastLogged = latestLoggedExercise(named: templateExercise.name)
-            let seededSets = makeSets(
+            let lastLogged = WorkoutHistoryDefaults.latestLoggedExercise(
+                matching: templateExercise,
+                in: data.history
+            )
+            let seededSets = WorkoutHistoryDefaults.makeSets(
                 targetSetCount: templateExercise.targetSetCount,
                 targetRepsText: templateExercise.targetRepsText,
                 lastLogged: lastLogged
@@ -190,7 +193,10 @@ final class WorkoutStore: ObservableObject {
         )
     }
 
-    private func makeSets(
+}
+
+enum WorkoutHistoryDefaults {
+    static func makeSets(
         targetSetCount: Int,
         targetRepsText: String,
         lastLogged: LoggedExercise?
@@ -205,7 +211,7 @@ final class WorkoutStore: ObservableObject {
                 order: index + 1,
                 loadValue: previous?.loadValue,
                 loadUnit: previous?.loadUnit ?? inferredUnit,
-                repsValue: nil,
+                repsValue: previous?.repsValue,
                 previousLoadValue: previous?.loadValue,
                 previousLoadUnit: previous?.loadUnit,
                 previousRepsValue: previous?.repsValue,
@@ -217,14 +223,32 @@ final class WorkoutStore: ObservableObject {
         }
     }
 
-    private func latestLoggedExercise(named name: String) -> LoggedExercise? {
-        let normalizedName = name.normalizedExerciseName
-
-        return data.history
+    static func latestLoggedExercise(
+        matching templateExercise: TemplateExercise,
+        in history: [WorkoutSession]
+    ) -> LoggedExercise? {
+        let sessions = history
             .sorted { $0.date > $1.date }
+        let exactIdentityMatch = sessions
             .flatMap(\.exercises)
-            .first { $0.name.normalizedExerciseName == normalizedName }
+            .first { $0.templateExerciseId == templateExercise.id }
+
+        if let exactIdentityMatch {
+            return exactIdentityMatch
+        }
+
+        let normalizedName = templateExercise.name.normalizedExerciseName
+        return sessions
+            .flatMap(\.exercises)
+            .first { exercise in
+                exercise.templateExerciseId == nil &&
+                    exercise.name.normalizedExerciseName == normalizedName
+            }
     }
+}
+
+@MainActor
+private extension WorkoutStore {
 
     private func save() {
         guard let encoded = try? JSONEncoder.gymAppEncoder.encode(data) else {
@@ -240,17 +264,6 @@ final class WorkoutStore: ObservableObject {
         }
 
         return try? JSONDecoder.gymAppDecoder.decode(GymAppData.self, from: data)
-    }
-
-    private static func clearingIncompleteDefaultReps(in data: GymAppData) -> GymAppData {
-        var data = data
-
-        if var activeSession = data.activeSession {
-            clearIncompleteReps(in: &activeSession)
-            data.activeSession = activeSession
-        }
-
-        return data
     }
 
     private static func applyingCurrentPlanUpdates(to data: GymAppData) -> GymAppData {
@@ -324,16 +337,6 @@ final class WorkoutStore: ObservableObject {
 
         for exerciseIndex in template.exercises.indices {
             template.exercises[exerciseIndex].order = exerciseIndex
-        }
-    }
-
-    private static func clearIncompleteReps(in session: inout WorkoutSession) {
-        for exerciseIndex in session.exercises.indices {
-            for setIndex in session.exercises[exerciseIndex].sets.indices {
-                if !session.exercises[exerciseIndex].sets[setIndex].isCompleted {
-                    session.exercises[exerciseIndex].sets[setIndex].repsValue = nil
-                }
-            }
         }
     }
 
