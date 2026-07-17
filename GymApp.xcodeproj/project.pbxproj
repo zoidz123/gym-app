@@ -30,6 +30,7 @@
 		110000000000000000000011 /* 2026-05.md in Resources */ = {isa = PBXBuildFile; fileRef = 110000000000000000000203 /* 2026-05.md */; };
 		110000000000000000000012 /* 2026-06.md in Resources */ = {isa = PBXBuildFile; fileRef = 110000000000000000000204 /* 2026-06.md */; };
 		220000000000000000000001 /* SetEntryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000101 /* SetEntryTests.swift */; };
+		220000000000000000000002 /* WorkoutPlanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000102 /* WorkoutPlanTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -68,6 +69,7 @@
 		110000000000000000000204 /* 2026-06.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; name = "2026-06.md"; path = "workout-tracker/logs/2026-06.md"; sourceTree = SOURCE_ROOT; };
 		110000000000000000000205 /* exercemus-exercises.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "GymApp/exercemus-exercises.json"; sourceTree = SOURCE_ROOT; };
 		220000000000000000000101 /* SetEntryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetEntryTests.swift; sourceTree = "<group>"; };
+		220000000000000000000102 /* WorkoutPlanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutPlanTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -179,6 +181,7 @@
 			isa = PBXGroup;
 			children = (
 				220000000000000000000101 /* SetEntryTests.swift */,
+				220000000000000000000102 /* WorkoutPlanTests.swift */,
 			);
 			path = GymAppTests;
 			sourceTree = "<group>";
@@ -303,6 +306,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				220000000000000000000001 /* SetEntryTests.swift in Sources */,
+				220000000000000000000002 /* WorkoutPlanTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -11,27 +11,41 @@ final class WorkoutStore: ObservableObject {
 
     private let saveURL: URL
     private let importer: MarkdownWorkoutImporter
+    private let now: () -> Date
+    private let calendar: Calendar
 
     init(
         importer: MarkdownWorkoutImporter = MarkdownWorkoutImporter(),
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        saveURL customSaveURL: URL? = nil,
+        now: @escaping () -> Date = Date.init,
+        calendar: Calendar = .current
     ) {
         self.importer = importer
+        self.now = now
+        self.calendar = calendar
         let supportURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let appDirectory = supportURL.appendingPathComponent("GymApp", isDirectory: true)
+        let appDirectory = customSaveURL?.deletingLastPathComponent() ?? supportURL.appendingPathComponent("GymApp", isDirectory: true)
         try? fileManager.createDirectory(at: appDirectory, withIntermediateDirectories: true)
-        saveURL = appDirectory.appendingPathComponent("gym-data.json")
+        saveURL = customSaveURL ?? appDirectory.appendingPathComponent("gym-data.json")
 
-        if let storedData = Self.load(from: saveURL) {
-            let migratedData = Self.applyingCurrentPlanUpdates(to: storedData)
-            data = importer.enrichedExerciseData(for: migratedData)
-            if data != storedData {
-                save()
-            }
+        let storedData = Self.load(from: saveURL)
+        let sourceData: GymAppData
+        if let storedData {
+            sourceData = storedData
         } else {
-            data = importer.enrichedExerciseData(for: Self.applyingCurrentPlanUpdates(to: importer.loadSeedData()))
-            save()
+            sourceData = importer.loadSeedData()
         }
+
+        let updatedData = Self.applyingCurrentPlanUpdates(to: sourceData)
+        let enrichedData = importer.enrichedExerciseData(for: updatedData)
+        data = Self.migratingWeeklyPlans(
+            in: enrichedData,
+            for: now(),
+            calendar: calendar,
+            associateLegacySessions: storedData?.weeklyPlans.isEmpty ?? true
+        )
+        save()
 
         #if DEBUG
         let environment = ProcessInfo.processInfo.environment
@@ -42,7 +56,7 @@ final class WorkoutStore: ObservableObject {
 
         if data.activeSession == nil,
            let template = requestedTemplate ?? (shouldStartSuggested ? suggestedTemplate : nil) {
-            data.activeSession = makeSession(from: template)
+            data.activeSession = makeSession(from: template, plannedOccurrenceID: nil)
         }
         #endif
     }
@@ -64,53 +78,11 @@ final class WorkoutStore: ObservableObject {
     }
 
     var scheduledTemplateForToday: WorkoutTemplate? {
-        let weekday = Calendar.current.component(.weekday, from: Date())
-        let scheduledName: String?
-
-        switch weekday {
-        case 2:
-            scheduledName = "Push"
-        case 3:
-            scheduledName = "Pull"
-        case 4:
-            scheduledName = "Zone 2 Cardio"
-        case 5:
-            scheduledName = "Legs"
-        case 6:
-            scheduledName = "Zone 2 Cardio"
-        default:
-            scheduledName = nil
-        }
-
-        guard let scheduledName else { return nil }
-        return data.templates.first { $0.name.normalizedExerciseName == scheduledName.normalizedExerciseName }
+        nextUnloggedWeeklyStatus?.template
     }
 
     var weeklyWorkoutStatuses: [WeeklyWorkoutStatus] {
-        let calendar = Calendar.current
-        let weekInterval = Self.currentMondayWeekInterval(calendar: calendar)
-        let plannedNames = ["Push", "Pull", "Zone 2 Cardio", "Legs", "Push 2", "HIIT"]
-
-        return plannedNames.compactMap { plannedName in
-            guard let template = data.templates.first(where: { $0.name.normalizedExerciseName == plannedName.normalizedExerciseName }) else {
-                return nil
-            }
-
-            let matchingSession = data.history
-                .filter { session in
-                    return weekInterval.contains(session.date)
-                }
-                .sorted { $0.date > $1.date }
-                .first { session in
-                    session.workoutName.normalizedExerciseName == template.name.normalizedExerciseName
-                }
-
-            return WeeklyWorkoutStatus(
-                template: template,
-                displayName: Self.weeklyDisplayName(for: template.name),
-                loggedSession: matchingSession
-            )
-        }
+        weeklyWorkoutStatuses(for: now())
     }
 
     var todayLoggedSessions: [WorkoutSession] {
@@ -120,22 +92,141 @@ final class WorkoutStore: ObservableObject {
     }
 
     var nextUnloggedWeeklyTemplate: WorkoutTemplate? {
-        weeklyWorkoutStatuses.first { !$0.isLogged }?.template
+        nextUnloggedWeeklyStatus?.template
+    }
+
+    var nextUnloggedWeeklyStatus: WeeklyWorkoutStatus? {
+        weeklyWorkoutStatuses.first { !$0.isLogged }
+    }
+
+    var currentWeekPlan: WeeklyWorkoutPlan {
+        ensurePlanExists(for: now())
+        let weekStart = Self.mondayWeekStart(for: now(), calendar: calendar)
+        return data.weeklyPlans.first(where: { calendar.isDate($0.weekStart, inSameDayAs: weekStart) }) ??
+            WeeklyWorkoutPlan(weekStart: weekStart, occurrences: [])
+    }
+
+    var currentWeekOccurrences: [PlannedWorkoutOccurrence] {
+        currentWeekPlan.occurrences.sorted { $0.order < $1.order }
+    }
+
+    func template(for occurrence: PlannedWorkoutOccurrence) -> WorkoutTemplate? {
+        data.templates.first { $0.id == occurrence.templateID }
+    }
+
+    func weeklyWorkoutStatuses(for date: Date) -> [WeeklyWorkoutStatus] {
+        ensurePlanExists(for: date)
+        let weekStart = Self.mondayWeekStart(for: date, calendar: calendar)
+        guard let plan = data.weeklyPlans.first(where: { calendar.isDate($0.weekStart, inSameDayAs: weekStart) }) else {
+            return []
+        }
+
+        return plan.occurrences
+            .sorted { $0.order < $1.order }
+            .compactMap { occurrence in
+                guard let template = template(for: occurrence) else { return nil }
+                let loggedSession = data.history
+                    .filter { $0.plannedOccurrenceID == occurrence.id }
+                    .sorted { $0.date > $1.date }
+                    .first
+
+                return WeeklyWorkoutStatus(
+                    occurrence: occurrence,
+                    template: template,
+                    displayName: Self.weeklyDisplayName(for: template.name),
+                    loggedSession: loggedSession
+                )
+            }
     }
 
     func startWorkout(from template: WorkoutTemplate) {
-        data.activeSession = makeSession(from: template)
+        data.activeSession = makeSession(from: template, plannedOccurrenceID: nil)
+    }
+
+    func startWorkout(for status: WeeklyWorkoutStatus) {
+        data.activeSession = makeSession(
+            from: status.template,
+            plannedOccurrenceID: status.occurrence.id
+        )
     }
 
     func makeDraftSession(from template: WorkoutTemplate, date: Date = Date()) -> WorkoutSession {
-        var session = makeSession(from: template)
+        var session = makeSession(from: template, plannedOccurrenceID: nil)
         session.date = date
         return session
+    }
+
+    func makeDraftSession(for status: WeeklyWorkoutStatus, date: Date) -> WorkoutSession {
+        var session = makeSession(
+            from: status.template,
+            plannedOccurrenceID: isOccurrence(status.occurrence.id, validFor: date) ? status.occurrence.id : nil
+        )
+        session.date = date
+        return session
+    }
+
+    func addOccurrence(templateID: UUID) {
+        ensurePlanExists(for: now())
+        guard data.templates.contains(where: { $0.id == templateID }),
+              let planIndex = currentPlanIndex(for: now()) else {
+            return
+        }
+
+        data.weeklyPlans[planIndex].occurrences.append(
+            PlannedWorkoutOccurrence(
+                templateID: templateID,
+                order: data.weeklyPlans[planIndex].occurrences.count
+            )
+        )
+    }
+
+    func createWorkout(_ template: WorkoutTemplate) {
+        var template = template
+        template.order = data.templates.count
+        normalizeExerciseOrders(in: &template)
+        data.templates.append(template)
+        addOccurrence(templateID: template.id)
+    }
+
+    func updateWorkout(_ template: WorkoutTemplate) {
+        guard let index = data.templates.firstIndex(where: { $0.id == template.id }) else {
+            return
+        }
+
+        var template = template
+        normalizeExerciseOrders(in: &template)
+        data.templates[index] = template
+    }
+
+    func deleteOccurrence(id: UUID) {
+        ensurePlanExists(for: now())
+        guard let planIndex = currentPlanIndex(for: now()) else { return }
+        data.weeklyPlans[planIndex].occurrences.removeAll { $0.id == id }
+        normalizeOccurrenceOrders(in: &data.weeklyPlans[planIndex])
+    }
+
+    func moveOccurrences(from source: IndexSet, to destination: Int) {
+        ensurePlanExists(for: now())
+        guard let planIndex = currentPlanIndex(for: now()) else { return }
+        var occurrences = data.weeklyPlans[planIndex].occurrences
+        let moving = source.sorted().map { occurrences[$0] }
+        for index in source.sorted(by: >) {
+            occurrences.remove(at: index)
+        }
+        let removedBeforeDestination = source.filter { $0 < destination }.count
+        let insertionIndex = max(0, min(destination - removedBeforeDestination, occurrences.count))
+        occurrences.insert(contentsOf: moving, at: insertionIndex)
+        data.weeklyPlans[planIndex].occurrences = occurrences
+        normalizeOccurrenceOrders(in: &data.weeklyPlans[planIndex])
     }
 
     func saveWorkoutSession(_ session: WorkoutSession) {
         var savedSession = session
         savedSession.isSeededHistory = false
+        if let occurrenceID = savedSession.plannedOccurrenceID,
+           !isOccurrence(occurrenceID, validFor: savedSession.date) {
+            savedSession.plannedOccurrenceID = nil
+        }
         data.history.removeAll { $0.id == savedSession.id }
         data.history.append(savedSession)
         data.history.sort { $0.date > $1.date }
@@ -147,17 +238,21 @@ final class WorkoutStore: ObservableObject {
 
     func completeActiveWorkout() {
         guard var session = data.activeSession else { return }
-        session.date = Date()
+        session.date = now()
         session.isSeededHistory = false
         data.history.insert(session, at: 0)
         data.activeSession = nil
     }
 
     func resetFromBundledTracker() {
-        data = importer.loadSeedData()
+        let seedData = importer.enrichedExerciseData(for: importer.loadSeedData())
+        data = Self.migratingWeeklyPlans(in: seedData, for: now(), calendar: calendar)
     }
 
-    private func makeSession(from template: WorkoutTemplate) -> WorkoutSession {
+    private func makeSession(
+        from template: WorkoutTemplate,
+        plannedOccurrenceID: UUID?
+    ) -> WorkoutSession {
         let exercises = template.exercises.map { templateExercise -> LoggedExercise in
             let lastLogged = WorkoutHistoryDefaults.latestLoggedExercise(
                 matching: templateExercise,
@@ -183,12 +278,13 @@ final class WorkoutStore: ObservableObject {
         }
 
         return WorkoutSession(
-            date: Date(),
+            date: now(),
             workoutName: template.name,
             bodyweight: "",
             duration: "",
             notes: "",
             isSeededHistory: false,
+            plannedOccurrenceID: plannedOccurrenceID,
             exercises: exercises
         )
     }
@@ -250,6 +346,45 @@ enum WorkoutHistoryDefaults {
 @MainActor
 private extension WorkoutStore {
 
+    func ensurePlanExists(for date: Date) {
+        let migratedData = Self.migratingWeeklyPlans(
+            in: data,
+            for: date,
+            calendar: calendar,
+            associateLegacySessions: false
+        )
+        if migratedData != data {
+            data = migratedData
+        }
+    }
+
+    func currentPlanIndex(for date: Date) -> Int? {
+        let weekStart = Self.mondayWeekStart(for: date, calendar: calendar)
+        return data.weeklyPlans.firstIndex {
+            calendar.isDate($0.weekStart, inSameDayAs: weekStart)
+        }
+    }
+
+    func isOccurrence(_ occurrenceID: UUID, validFor date: Date) -> Bool {
+        data.weeklyPlans.contains { plan in
+            let interval = Self.mondayWeekInterval(for: plan.weekStart, calendar: calendar)
+            return interval.contains(date) && plan.occurrences.contains { $0.id == occurrenceID }
+        }
+    }
+
+    func normalizeExerciseOrders(in template: inout WorkoutTemplate) {
+        template.exercises.sort { $0.order < $1.order }
+        for index in template.exercises.indices {
+            template.exercises[index].order = index
+        }
+    }
+
+    func normalizeOccurrenceOrders(in plan: inout WeeklyWorkoutPlan) {
+        for index in plan.occurrences.indices {
+            plan.occurrences[index].order = index
+        }
+    }
+
     private func save() {
         guard let encoded = try? JSONEncoder.gymAppEncoder.encode(data) else {
             return
@@ -264,6 +399,86 @@ private extension WorkoutStore {
         }
 
         return try? JSONDecoder.gymAppDecoder.decode(GymAppData.self, from: data)
+    }
+
+    static func migratingWeeklyPlans(
+        in sourceData: GymAppData,
+        for date: Date,
+        calendar: Calendar,
+        associateLegacySessions: Bool = true
+    ) -> GymAppData {
+        var data = sourceData
+        for index in data.weeklyPlans.indices {
+            data.weeklyPlans[index].weekStart = mondayWeekStart(
+                for: data.weeklyPlans[index].weekStart,
+                calendar: calendar
+            )
+            for occurrenceIndex in data.weeklyPlans[index].occurrences.indices {
+                data.weeklyPlans[index].occurrences[occurrenceIndex].order = occurrenceIndex
+            }
+        }
+
+        let requestedWeekStart = mondayWeekStart(for: date, calendar: calendar)
+        let hasRequestedWeek = data.weeklyPlans.contains {
+            calendar.isDate($0.weekStart, inSameDayAs: requestedWeekStart)
+        }
+
+        if !hasRequestedWeek {
+            let sourceOccurrences = data.weeklyPlans
+                .filter { $0.weekStart < requestedWeekStart }
+                .sorted { $0.weekStart > $1.weekStart }
+                .first?
+                .occurrences
+                .sorted { $0.order < $1.order }
+
+            let occurrences: [PlannedWorkoutOccurrence]
+            if let sourceOccurrences {
+                occurrences = sourceOccurrences.enumerated().map { index, occurrence in
+                    PlannedWorkoutOccurrence(templateID: occurrence.templateID, order: index)
+                }
+            } else {
+                occurrences = data.templates
+                    .sorted { $0.order < $1.order }
+                    .enumerated()
+                    .map { index, template in
+                        PlannedWorkoutOccurrence(templateID: template.id, order: index)
+                    }
+            }
+
+            data.weeklyPlans.append(
+                WeeklyWorkoutPlan(
+                    weekStart: requestedWeekStart,
+                    occurrences: occurrences
+                )
+            )
+        }
+
+        guard associateLegacySessions else {
+            data.weeklyPlans.sort { $0.weekStart < $1.weekStart }
+            return data
+        }
+
+        for plan in data.weeklyPlans {
+            let interval = mondayWeekInterval(for: plan.weekStart, calendar: calendar)
+            var candidateSessionIndices = data.history.indices
+                .filter { data.history[$0].plannedOccurrenceID == nil && interval.contains(data.history[$0].date) }
+                .sorted { data.history[$0].date < data.history[$1].date }
+
+            for occurrence in plan.occurrences.sorted(by: { $0.order < $1.order }) {
+                guard let template = data.templates.first(where: { $0.id == occurrence.templateID }),
+                      let candidateOffset = candidateSessionIndices.firstIndex(where: { sessionIndex in
+                          data.history[sessionIndex].workoutName.normalizedExerciseName == template.name.normalizedExerciseName
+                      }) else {
+                    continue
+                }
+
+                let sessionIndex = candidateSessionIndices.remove(at: candidateOffset)
+                data.history[sessionIndex].plannedOccurrenceID = occurrence.id
+            }
+        }
+
+        data.weeklyPlans.sort { $0.weekStart < $1.weekStart }
+        return data
     }
 
     private static func applyingCurrentPlanUpdates(to data: GymAppData) -> GymAppData {
@@ -356,18 +571,23 @@ private extension WorkoutStore {
         return name
     }
 
-    private static func currentMondayWeekInterval(calendar: Calendar) -> DateInterval {
-        let today = calendar.startOfDay(for: Date())
-        let weekday = calendar.component(.weekday, from: today)
+    static func mondayWeekStart(for date: Date, calendar: Calendar) -> Date {
+        let day = calendar.startOfDay(for: date)
+        let weekday = calendar.component(.weekday, from: day)
         let daysSinceMonday = (weekday + 5) % 7
-        let start = calendar.date(byAdding: .day, value: -daysSinceMonday, to: today) ?? today
-        let end = calendar.date(byAdding: .day, value: 7, to: start) ?? today
+        return calendar.date(byAdding: .day, value: -daysSinceMonday, to: day) ?? day
+    }
+
+    static func mondayWeekInterval(for date: Date, calendar: Calendar) -> DateInterval {
+        let start = mondayWeekStart(for: date, calendar: calendar)
+        let end = calendar.date(byAdding: .day, value: 7, to: start) ?? start
         return DateInterval(start: start, end: end)
     }
 }
 
 struct WeeklyWorkoutStatus: Identifiable, Equatable {
-    var id: UUID { template.id }
+    var id: UUID { occurrence.id }
+    let occurrence: PlannedWorkoutOccurrence
     let template: WorkoutTemplate
     let displayName: String
     let loggedSession: WorkoutSession?

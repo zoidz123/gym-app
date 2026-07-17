@@ -2,9 +2,7 @@ import SwiftUI
 
 struct TodayView: View {
     @EnvironmentObject private var store: WorkoutStore
-    @State private var isLoggingPreviousWorkout = false
-    @State private var previousWorkoutDate = Date()
-    @State private var previousWorkoutTemplateID: UUID?
+    @State private var previousWorkoutSelection: WeeklyWorkoutStatus?
 
     var body: some View {
         NavigationStack {
@@ -32,10 +30,11 @@ struct TodayView: View {
                 }
             }
             .background(AppTheme.screenBackground)
-            .sheet(isPresented: $isLoggingPreviousWorkout) {
+            .sheet(item: $previousWorkoutSelection) { status in
                 LogPreviousWorkoutSheet(
-                    initialDate: previousWorkoutDate,
-                    initialTemplateID: previousWorkoutTemplateID
+                    initialDate: Date(),
+                    initialTemplateID: status.template.id,
+                    initialOccurrenceID: status.occurrence.id
                 )
             }
         }
@@ -50,7 +49,7 @@ struct TodayView: View {
                     onLogPrevious: openPreviousWorkoutLogger
                 )
 
-                if let suggested = store.nextUnloggedWeeklyTemplate ?? store.suggestedTemplate {
+                if let suggested = store.nextUnloggedWeeklyStatus?.template ?? store.suggestedTemplate {
                     AppCard {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
@@ -60,7 +59,7 @@ struct TodayView: View {
 
                                 Spacer()
 
-                                if store.scheduledTemplateForToday?.id == suggested.id {
+                                if store.nextUnloggedWeeklyStatus?.template.id == suggested.id {
                                     Pill("Scheduled", systemImage: "calendar")
                                 } else {
                                     Pill("Next up", systemImage: "arrow.right")
@@ -75,7 +74,12 @@ struct TodayView: View {
                             templateMetaRow(for: suggested)
 
                             Button {
-                                store.startWorkout(from: suggested)
+                                if let status = store.nextUnloggedWeeklyStatus,
+                                   status.template.id == suggested.id {
+                                    store.startWorkout(for: status)
+                                } else {
+                                    store.startWorkout(from: suggested)
+                                }
                             } label: {
                                 Label("Start \(suggested.name)", systemImage: "play.fill")
                                     .frame(maxWidth: .infinity)
@@ -136,17 +140,15 @@ struct TodayView: View {
         }
     }
 
-    private func openPreviousWorkoutLogger(template: WorkoutTemplate) {
-        previousWorkoutDate = Date()
-        previousWorkoutTemplateID = template.id
-        isLoggingPreviousWorkout = true
+    private func openPreviousWorkoutLogger(status: WeeklyWorkoutStatus) {
+        previousWorkoutSelection = status
     }
 }
 
 private struct WeeklyProgressCard: View {
     let statuses: [WeeklyWorkoutStatus]
     let loggedToday: [WorkoutSession]
-    let onLogPrevious: (WorkoutTemplate) -> Void
+    let onLogPrevious: (WeeklyWorkoutStatus) -> Void
 
     private var loggedCount: Int {
         statuses.filter(\.isLogged).count
@@ -173,7 +175,7 @@ private struct WeeklyProgressCard: View {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
                     ForEach(statuses) { status in
                         WeeklyWorkoutChip(status: status) {
-                            onLogPrevious(status.template)
+                            onLogPrevious(status)
                         }
                     }
                 }
