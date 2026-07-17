@@ -100,12 +100,12 @@ struct CalendarView: View {
             VStack(spacing: 6) {
                 Text("\(calendar.component(.day, from: date))")
                     .font(.headline.weight(.semibold))
-                    .foregroundStyle(isSelected ? Color.white : AppTheme.ink)
+                    .foregroundStyle(isSelected ? AppTheme.contentOnStrongFill : AppTheme.ink)
 
                 HStack(spacing: 3) {
                     ForEach(0..<min(daySessions.count, 3), id: \.self) { index in
                         Circle()
-                            .fill(isSelected ? Color.white.opacity(0.9) : color(for: daySessions[index].workoutName))
+                            .fill(isSelected ? AppTheme.contentOnStrongFill.opacity(0.9) : color(for: daySessions[index].workoutName))
                             .frame(width: 5, height: 5)
                     }
                 }

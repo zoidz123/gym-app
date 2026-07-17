@@ -3,9 +3,10 @@ import SwiftUI
 enum AppTheme {
     static let accent = Color("AccentColor")
     static let accentSoft = Color("AccentColor").opacity(0.14)
-    static let success = Color("AccentColor")
-    static let successSoft = Color("AccentColor").opacity(0.1)
+    static let success = Color("SuccessColor")
+    static let successSoft = Color("SuccessColor").opacity(0.12)
     static let ink = Color.primary
+    static let contentOnStrongFill = Color(.systemBackground)
     static let textSecondary = Color.secondary
     static let textTertiary = Color(.tertiaryLabel)
     static let screenBackground = Color(.systemBackground)
@@ -14,6 +15,7 @@ enum AppTheme {
     static let chipBackground = Color.clear
     static let chipBorder = Color(.separator)
     static let divider = Color(.separator)
+    static let destructive = Color(.systemRed)
 }
 
 struct AppCard<Content: View>: View {

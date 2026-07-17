@@ -478,7 +478,7 @@ private struct PlanTemplateDetailsSheet: View {
                     Button("Done") { dismiss() }
                         .buttonStyle(.borderedProminent)
                         .tint(AppTheme.accent)
-                        .foregroundStyle(Color.white)
+                        .foregroundStyle(AppTheme.contentOnStrongFill)
                 }
             }
         }
