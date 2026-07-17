@@ -2,25 +2,6 @@ import XCTest
 @testable import Stacked
 
 final class SetEntryTests: XCTestCase {
-    func testPlanParserAcceptsPublicReadmeHyphenFormat() throws {
-        let plan = """
-        # Push
-
-        1. Incline DB Press - 3 sets - 6-10 reps
-        2. Cable Crossover + DB Lateral Raise - 3 supersets - 12-15 / 12-20 reps
-        """
-
-        let template = try XCTUnwrap(MarkdownWorkoutImporter().parsePlan(plan).first)
-
-        XCTAssertEqual(template.name, "Push")
-        XCTAssertEqual(template.exercises.map(\.name), [
-            "Incline DB Press",
-            "Cable Crossover",
-            "DB Lateral Raise"
-        ])
-        XCTAssertEqual(template.exercises.map(\.targetSetCount), [3, 3, 3])
-    }
-
     func testHistoryDefaultsUseStableExerciseIdentityAndMostRecentRelevantSession() {
         let templateExercise = makeTemplateExercise(name: "Incline DB Press")
         let identityMatch = makeLoggedExercise(

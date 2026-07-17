@@ -11,12 +11,6 @@ Use Xcode command-line tools directly.
 - App display name: `Stacked`
 - Minimum iOS version: iOS 17
 
-Initialize the workout-plan submodule before building:
-
-```sh
-git submodule update --init --recursive
-```
-
 Build without requiring an Apple Developer account:
 
 ```sh

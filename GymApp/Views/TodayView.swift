@@ -3,6 +3,7 @@ import SwiftUI
 struct TodayView: View {
     @EnvironmentObject private var store: WorkoutStore
     @State private var previousWorkoutSelection: WeeklyWorkoutStatus?
+    @State private var isAddingWorkout = false
 
     var body: some View {
         NavigationStack {
@@ -23,6 +24,14 @@ struct TodayView: View {
                     initialDate: Date(),
                     initialTemplateID: status.template.id,
                     initialOccurrenceID: status.occurrence.id
+                )
+            }
+            .sheet(isPresented: $isAddingWorkout) {
+                AddWorkoutSheet(
+                    templates: store.data.templates,
+                    exerciseDefinitions: store.data.exerciseDefinitions,
+                    onAddExisting: store.addOccurrence,
+                    onCreate: store.createWorkout
                 )
             }
         }
@@ -49,13 +58,19 @@ struct TodayView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Calendar, \(Date().workoutLongDate)")
 
-                WeeklyProgressCard(
-                    statuses: store.weeklyWorkoutStatuses,
-                    groups: store.weeklyTemplateGroups,
-                    onLogPrevious: openPreviousWorkoutLogger
-                )
+                if store.data.templates.isEmpty {
+                    TodayEmptyPlanView {
+                        isAddingWorkout = true
+                    }
+                } else {
+                    WeeklyProgressCard(
+                        statuses: store.weeklyWorkoutStatuses,
+                        groups: store.weeklyTemplateGroups,
+                        onLogPrevious: openPreviousWorkoutLogger
+                    )
 
-                Divider()
+                    Divider()
+                }
 
                 if let suggested = store.nextUnloggedWeeklyStatus?.template ?? store.suggestedTemplate {
                     AppCard {
@@ -102,51 +117,53 @@ struct TodayView: View {
                     Divider()
                 }
 
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("Change workout")
-                        .font(.headline)
-                        .foregroundStyle(AppTheme.textSecondary)
-                        .padding(.vertical, 14)
+                if !store.data.templates.isEmpty {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("Change workout")
+                            .font(.headline)
+                            .foregroundStyle(AppTheme.textSecondary)
+                            .padding(.vertical, 14)
 
-                    ForEach(Array(store.data.templates.enumerated()), id: \.element.id) { index, template in
-                        Button {
-                            store.startWorkout(from: template)
-                        } label: {
-                            ViewThatFits(in: .horizontal) {
-                                HStack(spacing: 8) {
-                                    Text(template.name)
-                                        .font(.headline)
-                                        .foregroundStyle(AppTheme.ink)
-                                        .lineLimit(1)
+                        ForEach(Array(store.data.templates.enumerated()), id: \.element.id) { index, template in
+                            Button {
+                                store.startWorkout(from: template)
+                            } label: {
+                                ViewThatFits(in: .horizontal) {
+                                    HStack(spacing: 8) {
+                                        Text(template.name)
+                                            .font(.headline)
+                                            .foregroundStyle(AppTheme.ink)
+                                            .lineLimit(1)
 
-                                    Spacer(minLength: 4)
+                                        Spacer(minLength: 4)
 
-                                    HStack(spacing: 6) {
-                                        templateMeta(template)
+                                        HStack(spacing: 6) {
+                                            templateMeta(template)
+                                        }
+
+                                        Image(systemName: "chevron.right")
+                                            .font(.footnote.weight(.semibold))
+                                            .foregroundStyle(AppTheme.textTertiary)
                                     }
 
-                                    Image(systemName: "chevron.right")
-                                        .font(.footnote.weight(.semibold))
-                                        .foregroundStyle(AppTheme.textTertiary)
-                                }
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        Text(template.name)
+                                            .font(.headline)
+                                            .foregroundStyle(AppTheme.ink)
 
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text(template.name)
-                                        .font(.headline)
-                                        .foregroundStyle(AppTheme.ink)
-
-                                    HStack(spacing: 6) {
-                                        templateMeta(template)
+                                        HStack(spacing: 6) {
+                                            templateMeta(template)
+                                        }
                                     }
                                 }
+                                .contentShape(Rectangle())
                             }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.vertical, 13)
+                            .buttonStyle(.plain)
+                            .padding(.vertical, 13)
 
-                        if index < store.data.templates.count - 1 {
-                            Divider()
+                            if index < store.data.templates.count - 1 {
+                                Divider()
+                            }
                         }
                     }
                 }
@@ -178,6 +195,32 @@ struct TodayView: View {
 
     private func openPreviousWorkoutLogger(status: WeeklyWorkoutStatus) {
         previousWorkoutSelection = status
+    }
+}
+
+private struct TodayEmptyPlanView: View {
+    let addWorkout: () -> Void
+
+    var body: some View {
+        AppCard {
+            VStack(spacing: 16) {
+                EmptyStateView(
+                    title: "Create Your Workout Plan",
+                    message: "Add your first workout to plan the week and start tracking progress.",
+                    systemImage: "calendar.badge.plus"
+                )
+
+                Button(action: addWorkout) {
+                    Label("Add Workout", systemImage: "plus")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .tint(AppTheme.accent)
+                .accessibilityIdentifier("today-add-workout")
+            }
+        }
+        .padding(.vertical, 16)
     }
 }
 

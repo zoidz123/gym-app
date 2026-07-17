@@ -427,7 +427,7 @@ private struct PlanExerciseRow: View {
     }
 }
 
-private struct AddWorkoutSheet: View {
+struct AddWorkoutSheet: View {
     @Environment(\.dismiss) private var dismiss
     let templates: [WorkoutTemplate]
     let exerciseDefinitions: [ExerciseDefinition]
