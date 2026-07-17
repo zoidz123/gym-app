@@ -286,6 +286,7 @@ struct WorkoutSession: Identifiable, Codable, Equatable {
     var duration: String
     var notes: String
     var isSeededHistory: Bool
+    var plannedOccurrenceID: UUID? = nil
     var exercises: [LoggedExercise]
 
     var completedSetCount: Int {
@@ -319,8 +320,21 @@ struct WorkoutTemplate: Identifiable, Codable, Equatable {
     }
 }
 
+struct PlannedWorkoutOccurrence: Identifiable, Codable, Equatable {
+    var id = UUID()
+    var templateID: UUID
+    var order: Int
+}
+
+struct WeeklyWorkoutPlan: Identifiable, Codable, Equatable {
+    var id = UUID()
+    var weekStart: Date
+    var occurrences: [PlannedWorkoutOccurrence]
+}
+
 struct GymAppData: Codable, Equatable {
     var templates: [WorkoutTemplate]
+    var weeklyPlans: [WeeklyWorkoutPlan]
     var history: [WorkoutSession]
     var activeSession: WorkoutSession?
     var exerciseLibrary: [String]
@@ -328,12 +342,14 @@ struct GymAppData: Codable, Equatable {
 
     init(
         templates: [WorkoutTemplate],
+        weeklyPlans: [WeeklyWorkoutPlan] = [],
         history: [WorkoutSession],
         activeSession: WorkoutSession?,
         exerciseLibrary: [String],
         exerciseDefinitions: [ExerciseDefinition] = []
     ) {
         self.templates = templates
+        self.weeklyPlans = weeklyPlans
         self.history = history
         self.activeSession = activeSession
         self.exerciseLibrary = exerciseLibrary
@@ -344,6 +360,7 @@ struct GymAppData: Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case templates
+        case weeklyPlans
         case history
         case activeSession
         case exerciseLibrary
@@ -353,6 +370,7 @@ struct GymAppData: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         templates = try container.decode([WorkoutTemplate].self, forKey: .templates)
+        weeklyPlans = try container.decodeIfPresent([WeeklyWorkoutPlan].self, forKey: .weeklyPlans) ?? []
         history = try container.decode([WorkoutSession].self, forKey: .history)
         activeSession = try container.decodeIfPresent(WorkoutSession.self, forKey: .activeSession)
         exerciseLibrary = try container.decodeIfPresent([String].self, forKey: .exerciseLibrary) ?? []

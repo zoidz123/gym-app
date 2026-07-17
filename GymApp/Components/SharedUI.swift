@@ -2,18 +2,18 @@ import SwiftUI
 
 enum AppTheme {
     static let accent = Color(red: 1.0, green: 0.22, blue: 0.36)
-    static let accentSoft = Color(red: 1.0, green: 0.90, blue: 0.92)
+    static let accentSoft = Color(.systemPink).opacity(0.14)
     static let success = Color(red: 0.05, green: 0.55, blue: 0.32)
-    static let successSoft = Color(red: 0.90, green: 0.97, blue: 0.93)
-    static let ink = Color(red: 0.08, green: 0.08, blue: 0.09)
-    static let textSecondary = Color(red: 0.43, green: 0.43, blue: 0.46)
-    static let textTertiary = Color(red: 0.58, green: 0.58, blue: 0.62)
-    static let screenBackground = Color(red: 0.96, green: 0.96, blue: 0.95)
-    static let surface = Color.white
-    static let rowBackground = Color(red: 0.94, green: 0.94, blue: 0.93)
-    static let chipBackground = Color.white
-    static let chipBorder = Color.black.opacity(0.08)
-    static let divider = Color.black.opacity(0.10)
+    static let successSoft = Color(.systemGreen).opacity(0.12)
+    static let ink = Color.primary
+    static let textSecondary = Color.secondary
+    static let textTertiary = Color(.tertiaryLabel)
+    static let screenBackground = Color(.systemGroupedBackground)
+    static let surface = Color(.secondarySystemGroupedBackground)
+    static let rowBackground = Color(.tertiarySystemGroupedBackground)
+    static let chipBackground = Color(.secondarySystemGroupedBackground)
+    static let chipBorder = Color(.separator).opacity(0.55)
+    static let divider = Color(.separator).opacity(0.65)
 }
 
 struct AppCard<Content: View>: View {

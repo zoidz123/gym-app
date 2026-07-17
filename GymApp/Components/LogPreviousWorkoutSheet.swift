@@ -6,11 +6,17 @@ struct LogPreviousWorkoutSheet: View {
 
     @State private var selectedDate: Date
     @State private var selectedTemplateID: UUID?
+    @State private var selectedOccurrenceID: UUID?
     @State private var draftSession: WorkoutSession?
 
-    init(initialDate: Date = Date(), initialTemplateID: UUID? = nil) {
+    init(
+        initialDate: Date = Date(),
+        initialTemplateID: UUID? = nil,
+        initialOccurrenceID: UUID? = nil
+    ) {
         _selectedDate = State(initialValue: initialDate)
         _selectedTemplateID = State(initialValue: initialTemplateID)
+        _selectedOccurrenceID = State(initialValue: initialOccurrenceID)
     }
 
     var body: some View {
@@ -47,6 +53,7 @@ struct LogPreviousWorkoutSheet: View {
                 ForEach(store.data.templates) { template in
                     Button {
                         selectedTemplateID = template.id
+                        selectedOccurrenceID = nil
                     } label: {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
@@ -89,7 +96,12 @@ struct LogPreviousWorkoutSheet: View {
         .navigationTitle("Log Previous")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            selectedTemplateID = selectedTemplateID ?? selectedTemplate?.id
+            if selectedTemplateID == nil, let status = store.nextUnloggedWeeklyStatus {
+                selectedTemplateID = status.template.id
+                selectedOccurrenceID = status.occurrence.id
+            } else {
+                selectedTemplateID = selectedTemplateID ?? selectedTemplate?.id
+            }
         }
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
@@ -137,7 +149,13 @@ struct LogPreviousWorkoutSheet: View {
 
     private func makeDraft() {
         guard let selectedTemplate else { return }
-        draftSession = store.makeDraftSession(from: selectedTemplate, date: selectedDate)
+        if let selectedOccurrenceID,
+           let status = store.weeklyWorkoutStatuses.first(where: { $0.occurrence.id == selectedOccurrenceID }),
+           status.template.id == selectedTemplate.id {
+            draftSession = store.makeDraftSession(for: status, date: selectedDate)
+        } else {
+            draftSession = store.makeDraftSession(from: selectedTemplate, date: selectedDate)
+        }
     }
 
     private func saveDraft() {

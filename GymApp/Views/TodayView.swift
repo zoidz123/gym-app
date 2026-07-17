@@ -2,9 +2,7 @@ import SwiftUI
 
 struct TodayView: View {
     @EnvironmentObject private var store: WorkoutStore
-    @State private var isLoggingPreviousWorkout = false
-    @State private var previousWorkoutDate = Date()
-    @State private var previousWorkoutTemplateID: UUID?
+    @State private var previousWorkoutSelection: WeeklyWorkoutStatus?
 
     var body: some View {
         NavigationStack {
@@ -32,10 +30,11 @@ struct TodayView: View {
                 }
             }
             .background(AppTheme.screenBackground)
-            .sheet(isPresented: $isLoggingPreviousWorkout) {
+            .sheet(item: $previousWorkoutSelection) { status in
                 LogPreviousWorkoutSheet(
-                    initialDate: previousWorkoutDate,
-                    initialTemplateID: previousWorkoutTemplateID
+                    initialDate: Date(),
+                    initialTemplateID: status.template.id,
+                    initialOccurrenceID: status.occurrence.id
                 )
             }
         }
@@ -46,11 +45,11 @@ struct TodayView: View {
             VStack(alignment: .leading, spacing: 18) {
                 WeeklyProgressCard(
                     statuses: store.weeklyWorkoutStatuses,
-                    loggedToday: store.todayLoggedSessions,
+                    groups: store.weeklyTemplateGroups,
                     onLogPrevious: openPreviousWorkoutLogger
                 )
 
-                if let suggested = store.nextUnloggedWeeklyTemplate ?? store.suggestedTemplate {
+                if let suggested = store.nextUnloggedWeeklyStatus?.template ?? store.suggestedTemplate {
                     AppCard {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
@@ -60,7 +59,7 @@ struct TodayView: View {
 
                                 Spacer()
 
-                                if store.scheduledTemplateForToday?.id == suggested.id {
+                                if store.nextUnloggedWeeklyStatus?.template.id == suggested.id {
                                     Pill("Scheduled", systemImage: "calendar")
                                 } else {
                                     Pill("Next up", systemImage: "arrow.right")
@@ -75,7 +74,12 @@ struct TodayView: View {
                             templateMetaRow(for: suggested)
 
                             Button {
-                                store.startWorkout(from: suggested)
+                                if let status = store.nextUnloggedWeeklyStatus,
+                                   status.template.id == suggested.id {
+                                    store.startWorkout(for: status)
+                                } else {
+                                    store.startWorkout(from: suggested)
+                                }
                             } label: {
                                 Label("Start \(suggested.name)", systemImage: "play.fill")
                                     .frame(maxWidth: .infinity)
@@ -136,17 +140,15 @@ struct TodayView: View {
         }
     }
 
-    private func openPreviousWorkoutLogger(template: WorkoutTemplate) {
-        previousWorkoutDate = Date()
-        previousWorkoutTemplateID = template.id
-        isLoggingPreviousWorkout = true
+    private func openPreviousWorkoutLogger(status: WeeklyWorkoutStatus) {
+        previousWorkoutSelection = status
     }
 }
 
 private struct WeeklyProgressCard: View {
     let statuses: [WeeklyWorkoutStatus]
-    let loggedToday: [WorkoutSession]
-    let onLogPrevious: (WorkoutTemplate) -> Void
+    let groups: [WeeklyTemplateGroup]
+    let onLogPrevious: (WeeklyWorkoutStatus) -> Void
 
     private var loggedCount: Int {
         statuses.filter(\.isLogged).count
@@ -154,10 +156,10 @@ private struct WeeklyProgressCard: View {
 
     var body: some View {
         AppCard {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(loggedToday.isEmpty ? "This week" : "Workout logged today")
+                        Text("This Week")
                             .font(.headline)
 
                         Text("\(loggedCount) of \(statuses.count) workouts complete")
@@ -170,24 +172,13 @@ private struct WeeklyProgressCard: View {
                     progressBadge
                 }
 
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
-                    ForEach(statuses) { status in
-                        WeeklyWorkoutChip(status: status) {
-                            onLogPrevious(status.template)
+                VStack(spacing: 0) {
+                    ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+                        WeeklyTemplateProgressRow(group: group, onLogPrevious: onLogPrevious)
+
+                        if index < groups.count - 1 {
+                            Divider()
                         }
-                    }
-                }
-
-                if !loggedToday.isEmpty {
-                    HStack(spacing: 6) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(AppTheme.success)
-
-                        Text(todayLoggedText)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(AppTheme.textSecondary)
-                            .lineLimit(1)
                     }
                 }
             }
@@ -204,36 +195,46 @@ private struct WeeklyProgressCard: View {
             .clipShape(Capsule())
     }
 
-    private var todayLoggedText: String {
-        let names = loggedToday.map(\.workoutName).joined(separator: ", ")
-        return names.isEmpty ? "Logged today" : "Logged today: \(names)"
-    }
 }
 
-private struct WeeklyWorkoutChip: View {
-    let status: WeeklyWorkoutStatus
-    let onTap: () -> Void
+private struct WeeklyTemplateProgressRow: View {
+    let group: WeeklyTemplateGroup
+    let onLogPrevious: (WeeklyWorkoutStatus) -> Void
 
     var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 7) {
-                Image(systemName: status.isLogged ? "checkmark.circle.fill" : "circle")
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(status.isLogged ? AppTheme.success : AppTheme.textTertiary)
+        HStack(spacing: 10) {
+            Text(group.template.name)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(AppTheme.ink)
+                .lineLimit(1)
 
-                Text(status.displayName)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(status.isLogged ? AppTheme.ink : AppTheme.textSecondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
+            Spacer(minLength: 8)
+
+            ScrollView(.horizontal) {
+                HStack(spacing: 7) {
+                    ForEach(Array(group.statuses.enumerated()), id: \.element.id) { index, status in
+                        Button {
+                            onLogPrevious(status)
+                        } label: {
+                            Image(systemName: status.isLogged ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(status.isLogged ? AppTheme.success : AppTheme.textTertiary)
+                                .frame(width: 22, height: 22)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(
+                            "\(group.template.name), workout \(index + 1) of \(group.frequency), \(status.isLogged ? "complete" : "not complete")"
+                        )
+                        .accessibilityHint("Log this planned workout")
+                    }
+                }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(status.isLogged ? AppTheme.successSoft : AppTheme.screenBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .scrollIndicators(.hidden)
+            .fixedSize(horizontal: true, vertical: false)
         }
-        .buttonStyle(.plain)
+        .padding(.vertical, 5)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("weekly-template-\(group.template.id.uuidString)")
     }
 }
 

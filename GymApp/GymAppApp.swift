@@ -8,7 +8,6 @@ struct GymAppApp: App {
         WindowGroup {
             GymAppRootView()
                 .environmentObject(store)
-                .preferredColorScheme(.light)
                 .tint(AppTheme.accent)
         }
     }
