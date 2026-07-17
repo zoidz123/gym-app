@@ -8,23 +8,36 @@ struct HistoryView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 AppScreenHeader("History") {
-                    Button {
-                        isLoggingPreviousWorkout = true
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.headline.weight(.semibold))
-                            .frame(width: 44, height: 44)
+                    if !store.data.history.isEmpty {
+                        Button {
+                            isLoggingPreviousWorkout = true
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.headline.weight(.semibold))
+                                .frame(width: 44, height: 44)
+                        }
+                        .accessibilityLabel("Log previous workout")
                     }
-                    .accessibilityLabel("Log previous workout")
                 }
 
                 if store.data.history.isEmpty {
-                    EmptyStateView(
-                        title: "No History Yet",
-                        message: "Imported workouts and completed app sessions will show here.",
-                        systemImage: "clock"
-                    )
-                    .padding()
+                    VStack(spacing: 16) {
+                        EmptyStateView(
+                            title: "No history yet",
+                            message: "Completed workouts appear here.",
+                            systemImage: "clock"
+                        )
+
+                        Button {
+                            isLoggingPreviousWorkout = true
+                        } label: {
+                            EmptyStateActionLabel(title: "Log Workout", systemImage: "plus")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        .tint(AppTheme.accent)
+                    }
+                    .padding(.horizontal)
                     .frame(maxHeight: .infinity, alignment: .top)
                 } else {
                     List {

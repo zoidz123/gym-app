@@ -28,9 +28,7 @@ struct TodayView: View {
             }
             .sheet(isPresented: $isAddingWorkout) {
                 AddWorkoutSheet(
-                    templates: store.data.templates,
                     exerciseDefinitions: store.data.exerciseDefinitions,
-                    onAddExisting: store.addOccurrence,
                     onCreate: store.createWorkout
                 )
             }
@@ -202,24 +200,22 @@ private struct TodayEmptyPlanView: View {
     let addWorkout: () -> Void
 
     var body: some View {
-        AppCard {
-            VStack(spacing: 16) {
-                EmptyStateView(
-                    title: "Create Your Workout Plan",
-                    message: "Add your first workout to plan the week and start tracking progress.",
-                    systemImage: "calendar.badge.plus"
-                )
+        VStack(spacing: 16) {
+            EmptyStateView(
+                title: "No workouts yet",
+                message: "Add your first workout to get started.",
+                systemImage: "calendar.badge.plus"
+            )
 
-                Button(action: addWorkout) {
-                    Label("Add Workout", systemImage: "plus")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .tint(AppTheme.accent)
-                .accessibilityIdentifier("today-add-workout")
+            Button(action: addWorkout) {
+                EmptyStateActionLabel(title: "Add Workout", systemImage: "plus")
             }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .tint(AppTheme.accent)
+            .accessibilityIdentifier("today-add-workout")
         }
+        .padding(.horizontal)
         .padding(.vertical, 16)
     }
 }

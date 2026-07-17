@@ -60,6 +60,19 @@ final class WorkoutPlanTests: XCTestCase {
         XCTAssertTrue(reloadedStore.data.history.isEmpty)
     }
 
+    func testCreateWorkoutUsesChosenWeeklyFrequencyWithIndependentOccurrences() throws {
+        let monday = try date("2026-07-13")
+        let store = try makeStore(data: appData(templates: []), now: { monday })
+        let workout = template(name: "Leg Day", order: 0)
+
+        store.createWorkout(workout, weeklyFrequency: 3)
+
+        XCTAssertEqual(store.data.templates, [workout])
+        XCTAssertEqual(store.weeklyTemplateGroups.first?.frequency, 3)
+        XCTAssertEqual(Set(store.currentWeekOccurrences.map(\.id)).count, 3)
+        XCTAssertTrue(store.weeklyWorkoutStatuses.allSatisfy { !$0.isLogged })
+    }
+
     func testExistingPersistedDataSurvivesCatalogEnrichmentAndReload() throws {
         let monday = try date("2026-07-13")
         let workout = template(name: "My Routine", order: 0)
@@ -252,6 +265,26 @@ final class WorkoutPlanTests: XCTestCase {
             [zone2.id, zone2.id, push.id, legs.id]
         )
         XCTAssertEqual(Array(store.currentWeekOccurrences.prefix(2)).map(\.id), zoneOccurrenceIDs)
+        XCTAssertEqual(store.currentWeekOccurrences.map(\.order), Array(0..<4))
+    }
+
+    func testContextMenuReorderMovesWholeTemplateGroupAndStopsAtBoundaries() throws {
+        let monday = try date("2026-07-13")
+        let push = template(name: "Push", order: 0)
+        let zone2 = template(name: "Zone 2", order: 1)
+        let legs = template(name: "Legs", order: 2)
+        let store = try makeStore(data: appData(templates: [push, zone2, legs]), now: { monday })
+        store.addOccurrence(templateID: zone2.id)
+
+        store.moveTemplateGroup(templateID: zone2.id, by: -1)
+        XCTAssertEqual(store.weeklyTemplateGroups.map(\.id), [zone2.id, push.id, legs.id])
+        XCTAssertEqual(store.currentWeekOccurrences.map(\.templateID), [zone2.id, zone2.id, push.id, legs.id])
+
+        store.moveTemplateGroup(templateID: zone2.id, by: -1)
+        XCTAssertEqual(store.weeklyTemplateGroups.map(\.id), [zone2.id, push.id, legs.id])
+
+        store.moveTemplateGroup(templateID: push.id, by: 1)
+        XCTAssertEqual(store.weeklyTemplateGroups.map(\.id), [zone2.id, legs.id, push.id])
         XCTAssertEqual(store.currentWeekOccurrences.map(\.order), Array(0..<4))
     }
 
