@@ -12,7 +12,7 @@ struct SetRowEditor: View {
     @State private var isEditingReps = false
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .center, spacing: 8) {
             if showsLoad {
                 loadEditor
             } else {
@@ -21,9 +21,9 @@ struct SetRowEditor: View {
 
             repsEditor
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, minHeight: 66, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
         .background(set.isCompleted ? AppTheme.successSoft : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -39,23 +39,26 @@ struct SetRowEditor: View {
     }
 
     private var loadEditor: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 4) {
                 if set.loadUnit.usesLoadValue {
-                    InlineNumericField(
-                        text: $loadText,
-                        kind: .decimal,
-                        fontStyle: .load,
-                        placeholder: "0",
-                        accessibilityLabel: set.loadUnit.isTime ? "Time" : "Weight",
-                        onFocusChanged: { isEditingLoad = $0 },
-                        onValueChanged: commitLoadText
-                    )
-                    .frame(minWidth: 44, maxWidth: 86, minHeight: 34)
+                    fieldChrome(isFocused: isEditingLoad) {
+                        InlineNumericField(
+                            text: $loadText,
+                            kind: .decimal,
+                            fontStyle: .load,
+                            placeholder: "0",
+                            accessibilityLabel: set.loadUnit.isTime ? "Time" : "Weight",
+                            onFocusChanged: { isEditingLoad = $0 },
+                            onValueChanged: commitLoadText
+                        )
+                        .frame(width: 62, height: 44)
+                    }
                 } else {
                     Text(set.loadLabel)
                         .font(.system(.title3, design: .rounded).weight(.bold))
                         .foregroundStyle(AppTheme.ink)
+                        .frame(width: 62, height: 44)
                         .lineLimit(1)
                 }
 
@@ -65,7 +68,7 @@ struct SetRowEditor: View {
 
             if !previousSummary.isEmpty {
                 Text(previousSummary)
-                    .font(.caption.weight(.bold))
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(AppTheme.textSecondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -89,107 +92,77 @@ struct SetRowEditor: View {
             }
         } label: {
             HStack(spacing: 2) {
-                Text(set.loadUnit.label)
-                    .font(.subheadline.weight(.bold))
-                    .lineLimit(1)
+                if set.loadUnit.usesLoadValue {
+                    Text(set.loadUnit.label)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                }
 
                 Image(systemName: "chevron.down")
-                    .font(.caption2.weight(.bold))
+                    .font(.caption2.weight(.semibold))
             }
             .foregroundStyle(AppTheme.textSecondary)
-            .frame(minWidth: 38, minHeight: 34)
+            .frame(minWidth: 44, minHeight: 44)
             .contentShape(Rectangle())
         }
         .accessibilityLabel("Change unit, currently \(set.loadUnit.label)")
     }
 
     private var metricSummary: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 2) {
             Text(metric.title)
                 .font(.system(.headline, design: .rounded).weight(.bold))
                 .foregroundStyle(AppTheme.ink)
 
-            if !metric.target.isEmpty {
-                Text(metric.target)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(AppTheme.textSecondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-            }
+            Text(metricSupportingText)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(AppTheme.textSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var repsEditor: some View {
-        HStack(spacing: 4) {
-            Button {
+        HStack(spacing: 0) {
+            repAdjustmentButton(systemImage: "minus", label: "Decrease reps", isEnabled: (set.repsValue ?? 0) > 0) {
                 set.adjustReps(by: -1)
                 repsText = set.repsValue.map(String.init) ?? ""
-            } label: {
-                Image(systemName: "minus")
-                    .font(.headline.weight(.bold))
-                    .frame(width: 48, height: 52)
-                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .foregroundStyle((set.repsValue ?? 0) == 0 ? AppTheme.textTertiary : AppTheme.accent)
-            .disabled((set.repsValue ?? 0) == 0)
-            .accessibilityLabel("Decrease reps")
 
-            VStack(spacing: 0) {
-                InlineNumericField(
-                    text: $repsText,
-                    kind: .integer,
-                    fontStyle: .reps,
-                    placeholder: "0",
-                    accessibilityLabel: "Reps",
-                    onFocusChanged: { isEditingReps = $0 },
-                    onValueChanged: commitRepsText
-                )
-                .frame(width: 64, height: metricCaption == nil ? 52 : 34)
+            fieldChrome(isFocused: isEditingReps) {
+                VStack(spacing: -1) {
+                    InlineNumericField(
+                        text: $repsText,
+                        kind: .integer,
+                        fontStyle: .reps,
+                        placeholder: "0",
+                        accessibilityLabel: "Reps",
+                        onFocusChanged: { isEditingReps = $0 },
+                        onValueChanged: commitRepsText
+                    )
+                    .frame(width: 52, height: metricCaption == nil ? 44 : 30)
 
-                if let metricCaption {
-                    Text(metricCaption)
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(AppTheme.textSecondary)
-                        .lineLimit(1)
+                    if let metricCaption {
+                        Text(metricCaption)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(AppTheme.textSecondary)
+                            .lineLimit(1)
+                    }
                 }
+                .frame(width: 52, height: 44)
             }
-            .frame(width: 64, height: 52)
 
-            Button {
+            repAdjustmentButton(systemImage: "plus", label: "Increase reps") {
                 set.adjustReps(by: 1)
                 repsText = set.repsValue.map(String.init) ?? ""
-            } label: {
-                Image(systemName: "plus")
-                    .font(.headline.weight(.bold))
-                    .frame(width: 48, height: 52)
-                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(AppTheme.accent)
-            .accessibilityLabel("Increase reps")
         }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 3)
-        .background(AppTheme.surface)
-        .clipShape(Capsule())
-        .overlay {
-            Capsule()
-                .stroke(isEditingReps ? AppTheme.accent : AppTheme.chipBorder, lineWidth: isEditingReps ? 2 : 1)
-        }
+        .frame(width: 140)
     }
 
     private var showsLoad: Bool {
-        if set.loadUnit == .bodyweight || prefersLoad {
-            return true
-        }
-
-        if set.loadUnit.usesLoadValue {
-            return set.loadValue != nil || set.previousLoadValue != nil || !set.previousLoadText.isEmpty
-        }
-
-        return false
+        prefersLoad || set.loadUnit != .custom
     }
 
     private var previousSummary: String {
@@ -197,11 +170,57 @@ struct SetRowEditor: View {
             return ""
         }
 
-        return "last \(set.previousLabel)"
+        if showsLoad {
+            return "Last \(set.previousLabel)"
+        }
+
+        return "Last \(set.previousRepsText) \(metric.unitLabel)"
+    }
+
+    private var metricSupportingText: String {
+        previousSummary.isEmpty ? metric.target : previousSummary
     }
 
     private var metricCaption: String? {
         showsLoad ? nil : metric.unitLabel
+    }
+
+    private func fieldChrome<Content: View>(
+        isFocused: Bool,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .background {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(isFocused ? AppTheme.accentSoft : AppTheme.surface.opacity(0.82))
+                    .frame(height: 38)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .stroke(isFocused ? AppTheme.accent : AppTheme.chipBorder, lineWidth: isFocused ? 1.5 : 1)
+                    .frame(height: 38)
+            }
+    }
+
+    private func repAdjustmentButton(
+        systemImage: String,
+        label: String,
+        isEnabled: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.caption.weight(.bold))
+                .frame(width: 28, height: 28)
+                .background(AppTheme.surface.opacity(0.72))
+                .clipShape(Circle())
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(isEnabled ? AppTheme.accent : AppTheme.textTertiary)
+        .disabled(!isEnabled)
+        .accessibilityLabel(label)
     }
 
     private func synchronizeDrafts() {
@@ -334,7 +353,7 @@ struct InlineNumericField: UIViewRepresentable {
         case reps
 
         var font: UIFont {
-            let size: CGFloat = self == .load ? 24 : 34
+            let size: CGFloat = self == .load ? 24 : 27
             var font = UIFont.monospacedDigitSystemFont(ofSize: size, weight: .bold)
             if let rounded = font.fontDescriptor.withDesign(.rounded) {
                 font = UIFont(descriptor: rounded, size: size)
@@ -357,7 +376,7 @@ struct InlineNumericField: UIViewRepresentable {
         field.delegate = context.coordinator
         field.keyboardType = kind == .integer ? .numberPad : .decimalPad
         field.textAlignment = .center
-        field.placeholder = placeholder
+        field.attributedPlaceholder = styledPlaceholder
         field.font = fontStyle.font
         field.adjustsFontForContentSizeCategory = true
         field.adjustsFontSizeToFitWidth = true
@@ -366,7 +385,7 @@ struct InlineNumericField: UIViewRepresentable {
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
         field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         field.addTarget(context.coordinator, action: #selector(Coordinator.textChanged(_:)), for: .editingChanged)
-        field.inputAccessoryView = context.coordinator.makeAccessoryToolbar()
+        field.inputAccessoryView = context.coordinator.makeAccessoryView()
         context.coordinator.field = field
         return field
     }
@@ -376,6 +395,8 @@ struct InlineNumericField: UIViewRepresentable {
         field.keyboardType = kind == .integer ? .numberPad : .decimalPad
         field.font = fontStyle.font
         field.accessibilityLabel = accessibilityLabel
+        field.attributedPlaceholder = styledPlaceholder
+        context.coordinator.accessoryLabel?.text = accessibilityLabel
 
         if field.text != text {
             field.text = text
@@ -386,22 +407,56 @@ struct InlineNumericField: UIViewRepresentable {
         Coordinator(parent: self)
     }
 
+    private var styledPlaceholder: NSAttributedString {
+        NSAttributedString(
+            string: placeholder,
+            attributes: [.foregroundColor: UIColor.secondaryLabel]
+        )
+    }
+
     final class Coordinator: NSObject, UITextFieldDelegate {
         var parent: InlineNumericField
         weak var field: UITextField?
+        weak var accessoryLabel: UILabel?
 
         init(parent: InlineNumericField) {
             self.parent = parent
         }
 
-        func makeAccessoryToolbar() -> UIToolbar {
-            let toolbar = UIToolbar()
-            toolbar.sizeToFit()
-            toolbar.items = [
-                UIBarButtonItem(systemItem: .flexibleSpace),
-                UIBarButtonItem(title: "Done", style: .done, target: self, action: #selector(done))
-            ]
-            return toolbar
+        func makeAccessoryView() -> UIView {
+            let accessory = UIView(frame: CGRect(x: 0, y: 0, width: 0, height: 40))
+            accessory.backgroundColor = .secondarySystemBackground
+            accessory.autoresizingMask = [.flexibleWidth]
+
+            let label = UILabel()
+            label.translatesAutoresizingMaskIntoConstraints = false
+            label.font = .preferredFont(forTextStyle: .caption1)
+            label.textColor = .secondaryLabel
+            label.text = parent.accessibilityLabel
+            label.adjustsFontForContentSizeCategory = true
+            accessory.addSubview(label)
+            accessoryLabel = label
+
+            let doneButton = UIButton(type: .system)
+            doneButton.translatesAutoresizingMaskIntoConstraints = false
+            doneButton.setTitle("Done", for: .normal)
+            doneButton.titleLabel?.font = .preferredFont(forTextStyle: .subheadline)
+            doneButton.titleLabel?.adjustsFontForContentSizeCategory = true
+            doneButton.tintColor = UIColor(red: 1.0, green: 0.22, blue: 0.36, alpha: 1)
+            doneButton.addTarget(self, action: #selector(done), for: .touchUpInside)
+            doneButton.accessibilityLabel = "Done editing \(parent.accessibilityLabel.lowercased())"
+            accessory.addSubview(doneButton)
+
+            NSLayoutConstraint.activate([
+                label.leadingAnchor.constraint(equalTo: accessory.leadingAnchor, constant: 16),
+                label.centerYAnchor.constraint(equalTo: accessory.centerYAnchor),
+                doneButton.trailingAnchor.constraint(equalTo: accessory.trailingAnchor, constant: -12),
+                doneButton.centerYAnchor.constraint(equalTo: accessory.centerYAnchor),
+                doneButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 52),
+                doneButton.heightAnchor.constraint(equalToConstant: 40)
+            ])
+
+            return accessory
         }
 
         func textFieldDidBeginEditing(_ textField: UITextField) {

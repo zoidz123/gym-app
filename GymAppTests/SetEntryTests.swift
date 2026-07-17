@@ -95,6 +95,27 @@ final class SetEntryTests: XCTestCase {
         XCTAssertEqual(SetEntryValueParser.load(from: "abc"), .invalid)
     }
 
+    func testBlankLoadBasedExerciseKeepsWeightUnitAndRepsEntryLayout() {
+        let blankLoadedSet = LoggedSet(
+            order: 1,
+            loadValue: nil,
+            loadUnit: .lb,
+            repsValue: nil,
+            previousLoadValue: nil,
+            previousLoadUnit: nil,
+            previousRepsValue: nil,
+            previousLoadText: "",
+            previousRepsText: "",
+            detailText: "",
+            isCompleted: false
+        )
+
+        XCTAssertTrue(SetEntryLayout.supportsLoad(units: [blankLoadedSet.loadUnit]))
+        XCTAssertTrue(SetEntryLayout.supportsLoad(units: [.bodyweight]))
+        XCTAssertTrue(SetEntryLayout.supportsLoad(units: [.seconds]))
+        XCTAssertFalse(SetEntryLayout.supportsLoad(units: [.custom]))
+    }
+
     private func makeTemplateExercise(name: String) -> TemplateExercise {
         TemplateExercise(
             name: name,

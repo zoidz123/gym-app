@@ -111,8 +111,12 @@ struct ExerciseLoggingContent: View {
     }
 
     private var prefersLoad: Bool {
-        exercise.sets.contains { set in
-            set.loadValue != nil || set.previousLoadValue != nil || !set.previousLoadText.isEmpty
-        }
+        SetEntryLayout.supportsLoad(units: exercise.sets.map(\.loadUnit))
+    }
+}
+
+enum SetEntryLayout {
+    static func supportsLoad(units: [LoadUnit]) -> Bool {
+        units.contains { $0 != .custom }
     }
 }

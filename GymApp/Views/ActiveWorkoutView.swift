@@ -53,6 +53,7 @@ struct ActiveWorkoutView: View {
             }
             .padding()
         }
+        .scrollDismissesKeyboard(.interactively)
         .background(AppTheme.screenBackground)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
