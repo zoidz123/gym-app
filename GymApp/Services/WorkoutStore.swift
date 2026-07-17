@@ -36,8 +36,7 @@ final class WorkoutStore: ObservableObject {
         data = Self.migratingWeeklyPlans(
             in: enrichedData,
             for: now(),
-            calendar: calendar,
-            associateLegacySessions: storedData?.weeklyPlans.isEmpty ?? true
+            calendar: calendar
         )
         save()
 
@@ -50,7 +49,7 @@ final class WorkoutStore: ObservableObject {
 
         if data.activeSession == nil,
            let template = requestedTemplate ?? (shouldStartSuggested ? suggestedTemplate : nil) {
-            data.activeSession = makeSession(from: template, plannedOccurrenceID: nil)
+            startWorkout(from: template)
         }
         #endif
     }
@@ -119,13 +118,22 @@ final class WorkoutStore: ObservableObject {
             return []
         }
 
-        return Self.reconciledWeeklyStatuses(
-            plan: plan,
-            templates: data.templates,
-            weeklyPlans: data.weeklyPlans,
-            history: data.history,
-            calendar: calendar
-        )
+        return plan.occurrences
+            .sorted { $0.order < $1.order }
+            .compactMap { occurrence in
+                guard let template = template(for: occurrence) else { return nil }
+                let loggedSession = data.history
+                    .filter { $0.plannedOccurrenceID == occurrence.id }
+                    .sorted { $0.date > $1.date }
+                    .first
+
+                return WeeklyWorkoutStatus(
+                    occurrence: occurrence,
+                    template: template,
+                    displayName: Self.weeklyDisplayName(for: template.name),
+                    loggedSession: loggedSession
+                )
+            }
     }
 
     static func groupedWeeklyStatuses(_ statuses: [WeeklyWorkoutStatus]) -> [WeeklyTemplateGroup] {
@@ -149,7 +157,10 @@ final class WorkoutStore: ObservableObject {
     }
 
     func startWorkout(from template: WorkoutTemplate) {
-        data.activeSession = makeSession(from: template, plannedOccurrenceID: nil)
+        let occurrenceID = weeklyWorkoutStatuses
+            .first { $0.template.id == template.id && !$0.isLogged }?
+            .occurrence.id
+        data.activeSession = makeSession(from: template, plannedOccurrenceID: occurrenceID)
     }
 
     func startWorkout(for status: WeeklyWorkoutStatus) {
@@ -213,7 +224,6 @@ final class WorkoutStore: ObservableObject {
             guard allowCompletedRemoval, let completedOccurrence = matchingOccurrences.last else {
                 return matchingOccurrences.isEmpty ? .notFound : .requiresCompletedConfirmation
             }
-            unlinkHistory(from: completedOccurrence.id)
             removeOccurrence(completedOccurrence.id, fromPlanAt: planIndex)
             return .removedCompleted
         }
@@ -232,9 +242,6 @@ final class WorkoutStore: ObservableObject {
         )
         guard !occurrenceIDs.isEmpty else { return }
 
-        for occurrenceID in occurrenceIDs {
-            unlinkHistory(from: occurrenceID)
-        }
         data.weeklyPlans[planIndex].occurrences.removeAll { occurrenceIDs.contains($0.id) }
         normalizeOccurrenceOrders(in: &data.weeklyPlans[planIndex])
     }
@@ -441,8 +448,7 @@ private extension WorkoutStore {
         let migratedData = Self.migratingWeeklyPlans(
             in: data,
             for: date,
-            calendar: calendar,
-            associateLegacySessions: false
+            calendar: calendar
         )
         if migratedData != data {
             data = migratedData
@@ -476,12 +482,6 @@ private extension WorkoutStore {
         }
     }
 
-    func unlinkHistory(from occurrenceID: UUID) {
-        for historyIndex in data.history.indices where data.history[historyIndex].plannedOccurrenceID == occurrenceID {
-            data.history[historyIndex].plannedOccurrenceID = nil
-        }
-    }
-
     func removeOccurrence(_ occurrenceID: UUID, fromPlanAt planIndex: Int) {
         data.weeklyPlans[planIndex].occurrences.removeAll { $0.id == occurrenceID }
         normalizeOccurrenceOrders(in: &data.weeklyPlans[planIndex])
@@ -506,8 +506,7 @@ private extension WorkoutStore {
     static func migratingWeeklyPlans(
         in sourceData: GymAppData,
         for date: Date,
-        calendar: Calendar,
-        associateLegacySessions: Bool = true
+        calendar: Calendar
     ) -> GymAppData {
         var data = sourceData
         for index in data.weeklyPlans.indices {
@@ -555,122 +554,8 @@ private extension WorkoutStore {
             )
         }
 
-        guard associateLegacySessions else {
-            data.weeklyPlans.sort { $0.weekStart < $1.weekStart }
-            return data
-        }
-
-        for plan in data.weeklyPlans {
-            let interval = mondayWeekInterval(for: plan.weekStart, calendar: calendar)
-            var candidateSessionIndices = data.history.indices
-                .filter { data.history[$0].plannedOccurrenceID == nil && interval.contains(data.history[$0].date) }
-                .sorted { data.history[$0].date < data.history[$1].date }
-
-            for occurrence in plan.occurrences.sorted(by: { $0.order < $1.order }) {
-                guard let template = data.templates.first(where: { $0.id == occurrence.templateID }),
-                      let candidateOffset = candidateSessionIndices.firstIndex(where: { sessionIndex in
-                          data.history[sessionIndex].workoutName.normalizedExerciseName == template.name.normalizedExerciseName
-                      }) else {
-                    continue
-                }
-
-                let sessionIndex = candidateSessionIndices.remove(at: candidateOffset)
-                data.history[sessionIndex].plannedOccurrenceID = occurrence.id
-            }
-        }
-
         data.weeklyPlans.sort { $0.weekStart < $1.weekStart }
         return data
-    }
-
-    private static func reconciledWeeklyStatuses(
-        plan: WeeklyWorkoutPlan,
-        templates: [WorkoutTemplate],
-        weeklyPlans: [WeeklyWorkoutPlan],
-        history: [WorkoutSession],
-        calendar: Calendar
-    ) -> [WeeklyWorkoutStatus] {
-        let occurrences = plan.occurrences.sorted { $0.order < $1.order }
-        let templatesByID = Dictionary(uniqueKeysWithValues: templates.map { ($0.id, $0) })
-        let occurrenceTemplateIDs = Dictionary(
-            uniqueKeysWithValues: weeklyPlans.flatMap(\.occurrences).map { ($0.id, $0.templateID) }
-        )
-        let interval = mondayWeekInterval(for: plan.weekStart, calendar: calendar)
-        var remainingSessionIndices = history.indices
-            .filter { interval.contains(history[$0].date) }
-            .sorted { history[$0].date < history[$1].date }
-        var sessionIndexByOccurrenceID: [UUID: Int] = [:]
-
-        // Preserve explicit links first. Removing an assigned index makes it
-        // impossible for one session to complete two planned occurrences.
-        for occurrence in occurrences {
-            guard let candidateOffset = remainingSessionIndices.firstIndex(where: { sessionIndex in
-                history[sessionIndex].plannedOccurrenceID == occurrence.id
-            }) else {
-                continue
-            }
-
-            sessionIndexByOccurrenceID[occurrence.id] = remainingSessionIndices.remove(at: candidateOffset)
-        }
-
-        // Manual sessions and legacy sessions can satisfy a remaining occurrence
-        // when their template identity is unambiguous. This is computed for Home
-        // without rewriting or duplicating the persisted History record.
-        for occurrence in occurrences where sessionIndexByOccurrenceID[occurrence.id] == nil {
-            guard templatesByID[occurrence.templateID] != nil,
-                  let candidateOffset = remainingSessionIndices.firstIndex(where: { sessionIndex in
-                      inferredTemplateID(
-                        for: history[sessionIndex],
-                        templates: templates,
-                        occurrenceTemplateIDs: occurrenceTemplateIDs
-                      ) == occurrence.templateID
-                  }) else {
-                continue
-            }
-
-            sessionIndexByOccurrenceID[occurrence.id] = remainingSessionIndices.remove(at: candidateOffset)
-        }
-
-        return occurrences.compactMap { occurrence in
-            guard let template = templatesByID[occurrence.templateID] else { return nil }
-            let loggedSession = sessionIndexByOccurrenceID[occurrence.id].map { history[$0] }
-
-            return WeeklyWorkoutStatus(
-                occurrence: occurrence,
-                template: template,
-                displayName: weeklyDisplayName(for: template.name),
-                loggedSession: loggedSession
-            )
-        }
-    }
-
-    private static func inferredTemplateID(
-        for session: WorkoutSession,
-        templates: [WorkoutTemplate],
-        occurrenceTemplateIDs: [UUID: UUID]
-    ) -> UUID? {
-        if let occurrenceID = session.plannedOccurrenceID,
-           let templateID = occurrenceTemplateIDs[occurrenceID] {
-            return templateID
-        }
-
-        let exerciseIDs = Set(session.exercises.compactMap(\.templateExerciseId))
-        if !exerciseIDs.isEmpty {
-            let identityMatches = templates.filter { template in
-                let templateExerciseIDs = Set(template.exercises.map(\.id))
-                return exerciseIDs.isSubset(of: templateExerciseIDs)
-            }
-
-            if identityMatches.count == 1 {
-                return identityMatches[0].id
-            }
-        }
-
-        let normalizedName = session.workoutName.normalizedExerciseName
-        let nameMatches = templates.filter {
-            $0.name.normalizedExerciseName == normalizedName
-        }
-        return nameMatches.count == 1 ? nameMatches[0].id : nil
     }
 
     private static func applyingCurrentPlanUpdates(to data: GymAppData) -> GymAppData {
