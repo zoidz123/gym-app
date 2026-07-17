@@ -13,7 +13,7 @@
 	<key>stripSwiftSymbols</key>
 	<true/>
 	<key>teamID</key>
-	<string>JU7RZ24773</string>
+	<string>YOUR_TEAM_ID</string>
 	<key>uploadSymbols</key>
 	<true/>
 </dict>

@@ -6,7 +6,7 @@ struct MarkdownWorkoutImporter {
 
     func loadSeedData(bundle: Bundle = .main) -> GymAppData {
         let templates = loadPlan(bundle: bundle)
-        let history = loadHistory(bundle: bundle)
+        let history: [WorkoutSession] = []
         let exerciseDefinitions = buildExerciseDefinitions(
             bundle: bundle,
             templates: templates,
@@ -44,19 +44,6 @@ struct MarkdownWorkoutImporter {
         }
 
         return parsePlan(markdown)
-    }
-
-    private func loadHistory(bundle: Bundle) -> [WorkoutSession] {
-        let resourceNames = ["2026-04", "2026-05", "2026-06"]
-
-        return resourceNames.flatMap { name -> [WorkoutSession] in
-            guard let url = bundle.url(forResource: name, withExtension: "md"),
-                  let markdown = try? String(contentsOf: url, encoding: .utf8) else {
-                return []
-            }
-
-            return parseLog(markdown)
-        }
     }
 
     private func loadBundledExerciseDefinitions(bundle: Bundle) -> [ExerciseDefinition] {
@@ -150,7 +137,9 @@ struct MarkdownWorkoutImporter {
         }
 
         let body = String(line[line.index(after: dotIndex)...]).trimmed
-        let parts = body.components(separatedBy: lineSeparator)
+        let parts = body
+            .replacingOccurrences(of: " - ", with: lineSeparator)
+            .components(separatedBy: lineSeparator)
 
         guard parts.count >= 2 else { return nil }
 
