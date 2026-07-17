@@ -36,6 +36,69 @@ final class WorkoutPlanTests: XCTestCase {
         XCTAssertNotNil(store.data.templates.first { $0.id == legs.id })
     }
 
+    func testFreshInstallStartsEmptyAndPersistsUserCreatedWorkout() throws {
+        let monday = try date("2026-07-13")
+        let url = try temporarySaveURL()
+
+        var store: WorkoutStore? = WorkoutStore(saveURL: url, now: { monday }, calendar: testCalendar)
+        XCTAssertTrue(store?.data.templates.isEmpty == true)
+        XCTAssertTrue(store?.data.history.isEmpty == true)
+        XCTAssertTrue(store?.currentWeekOccurrences.isEmpty == true)
+        XCTAssertTrue(store?.weeklyWorkoutStatuses.isEmpty == true)
+        XCTAssertTrue(store?.weeklyTemplateGroups.isEmpty == true)
+        XCTAssertNil(store?.suggestedTemplate)
+        XCTAssertFalse(store?.data.exerciseDefinitions.isEmpty == true)
+
+        let workout = template(name: "My Workout", order: 0)
+        store?.createWorkout(workout)
+        XCTAssertEqual(store?.currentWeekOccurrences.map(\.templateID), [workout.id])
+        store = nil
+
+        let reloadedStore = WorkoutStore(saveURL: url, now: { monday }, calendar: testCalendar)
+        XCTAssertEqual(reloadedStore.data.templates, [workout])
+        XCTAssertEqual(reloadedStore.currentWeekOccurrences.map(\.templateID), [workout.id])
+        XCTAssertTrue(reloadedStore.data.history.isEmpty)
+    }
+
+    func testExistingPersistedDataSurvivesCatalogEnrichmentAndReload() throws {
+        let monday = try date("2026-07-13")
+        let workout = template(name: "My Routine", order: 0)
+        let occurrence = PlannedWorkoutOccurrence(templateID: workout.id, order: 0)
+        let completedSession = WorkoutSession(
+            date: try date("2026-07-14"),
+            workoutName: workout.name,
+            bodyweight: "180",
+            duration: "45 min",
+            notes: "Keep this",
+            isSeededHistory: false,
+            plannedOccurrenceID: occurrence.id,
+            exercises: []
+        )
+        let activeSession = session(name: "In Progress", date: monday)
+        let persistedData = GymAppData(
+            templates: [workout],
+            weeklyPlans: [WeeklyWorkoutPlan(weekStart: monday, occurrences: [occurrence])],
+            history: [completedSession],
+            activeSession: activeSession,
+            exerciseLibrary: ["Custom Movement"]
+        )
+        let url = try writeData(persistedData)
+
+        let store = WorkoutStore(saveURL: url, now: { monday }, calendar: testCalendar)
+
+        XCTAssertEqual(store.data.templates, persistedData.templates)
+        XCTAssertEqual(store.data.weeklyPlans, persistedData.weeklyPlans)
+        XCTAssertEqual(store.data.history, persistedData.history)
+        XCTAssertEqual(store.data.activeSession, persistedData.activeSession)
+        XCTAssertTrue(store.data.exerciseLibrary.contains("Custom Movement"))
+        XCTAssertEqual(store.weeklyWorkoutStatuses.first?.loggedSession?.id, completedSession.id)
+    }
+
+    func testAppBundleHasExerciseCatalogWithoutLegacyPlanResource() {
+        XCTAssertNotNil(Bundle.main.url(forResource: "exercemus-exercises", withExtension: "json"))
+        XCTAssertNil(Bundle.main.url(forResource: "plan", withExtension: "md"))
+    }
+
     func testPersistenceAndLegacyMigrationPreserveStoredWorkouts() throws {
         let monday = try date("2026-07-13")
         let zone2 = template(name: "Zone 2 Cardio", order: 0)
@@ -292,15 +355,20 @@ final class WorkoutPlanTests: XCTestCase {
     }
 
     private func writeData(_ data: GymAppData) throws -> URL {
+        let url = try temporarySaveURL()
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode(data).write(to: url)
+        return url
+    }
+
+    private func temporarySaveURL() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("gym-data.json")
         temporaryURLs.append(url)
-
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        try encoder.encode(data).write(to: url)
         return url
     }
 

@@ -10,18 +10,18 @@ final class WorkoutStore: ObservableObject {
     }
 
     private let saveURL: URL
-    private let importer: MarkdownWorkoutImporter
+    private let exerciseCatalog: ExerciseCatalogLoader
     private let now: () -> Date
     private let calendar: Calendar
 
     init(
-        importer: MarkdownWorkoutImporter = MarkdownWorkoutImporter(),
+        exerciseCatalog: ExerciseCatalogLoader = ExerciseCatalogLoader(),
         fileManager: FileManager = .default,
         saveURL customSaveURL: URL? = nil,
         now: @escaping () -> Date = Date.init,
         calendar: Calendar = .current
     ) {
-        self.importer = importer
+        self.exerciseCatalog = exerciseCatalog
         self.now = now
         self.calendar = calendar
         let supportURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -30,15 +30,9 @@ final class WorkoutStore: ObservableObject {
         saveURL = customSaveURL ?? appDirectory.appendingPathComponent("gym-data.json")
 
         let storedData = Self.load(from: saveURL)
-        let sourceData: GymAppData
-        if let storedData {
-            sourceData = storedData
-        } else {
-            sourceData = importer.loadSeedData()
-        }
-
+        let sourceData = storedData ?? .empty
         let updatedData = Self.applyingCurrentPlanUpdates(to: sourceData)
-        let enrichedData = importer.enrichedExerciseData(for: updatedData)
+        let enrichedData = exerciseCatalog.enrichedExerciseData(for: updatedData)
         data = Self.migratingWeeklyPlans(
             in: enrichedData,
             for: now(),
@@ -334,11 +328,6 @@ final class WorkoutStore: ObservableObject {
         session.isSeededHistory = false
         data.history.insert(session, at: 0)
         data.activeSession = nil
-    }
-
-    func resetFromBundledTracker() {
-        let seedData = importer.enrichedExerciseData(for: importer.loadSeedData())
-        data = Self.migratingWeeklyPlans(in: seedData, for: now(), calendar: calendar)
     }
 
     private func makeSession(

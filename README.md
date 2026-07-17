@@ -7,21 +7,15 @@ It supports reusable workout templates, supersets, previous-set hints, calendar 
 
 - macOS with Xcode 26 or newer
 - iOS 17 or newer
-- Git with submodule support
+- Git
 
 ## Setup
 
-Clone both repository boundaries without copying the nested repository into the parent history:
+Clone the repository:
 
 ```sh
-git clone --recurse-submodules https://github.com/zoidz123/gym-app.git
+git clone https://github.com/zoidz123/gym-app.git
 cd gym-app
-```
-
-If the repository is already cloned:
-
-```sh
-git submodule update --init --recursive
 ```
 
 The simulator build does not require an Apple Developer account:
@@ -58,7 +52,7 @@ For an App Store export, copy `ExportOptions-AppStore.example.plist` to the igno
 
 Workout data is stored only on device in the app's Application Support directory as `GymApp/gym-data.json`.
 Existing on-device data is not overwritten by repository updates.
-Fresh installs start with the plan from the `workout-tracker` submodule and no bundled personal workout history.
+Fresh installs start with an empty workout plan and guide the user through creating a workout in the app.
 The bundled exercise catalog comes from `exercemus/exercises`; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for its license and attribution.
 
 ## Repository structure
@@ -66,7 +60,6 @@ The bundled exercise catalog comes from `exercemus/exercises`; see [THIRD_PARTY_
 - `GymApp/` contains the application source, assets, and exercise catalog.
 - `GymAppTests/` contains unit tests.
 - `GymApp.xcodeproj/` contains the Xcode project.
-- `workout-tracker/` is a gitlink to the separate workout-plan repository.
 
 ## License and contributions
 

@@ -9,7 +9,7 @@
 /* Begin PBXBuildFile section */
 		110000000000000000000001 /* GymAppApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000000000000000000101 /* GymAppApp.swift */; };
 		110000000000000000000002 /* WorkoutModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000000000000000000102 /* WorkoutModels.swift */; };
-		110000000000000000000003 /* MarkdownWorkoutImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000000000000000000103 /* MarkdownWorkoutImporter.swift */; };
+		110000000000000000000003 /* ExerciseCatalogLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000000000000000000103 /* ExerciseCatalogLoader.swift */; };
 		110000000000000000000004 /* WorkoutStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000000000000000000104 /* WorkoutStore.swift */; };
 		110000000000000000000005 /* GymAppRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000000000000000000105 /* GymAppRootView.swift */; };
 		110000000000000000000006 /* TodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000000000000000000106 /* TodayView.swift */; };
@@ -25,7 +25,6 @@
 		110000000000000000000014 /* LogPreviousWorkoutSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000000000000000000110 /* LogPreviousWorkoutSheet.swift */; };
 		110000000000000000000015 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 110000000000000000000111 /* Assets.xcassets */; };
 		110000000000000000000016 /* exercemus-exercises.json in Resources */ = {isa = PBXBuildFile; fileRef = 110000000000000000000205 /* exercemus-exercises.json */; };
-		11000000000000000000000F /* plan.md in Resources */ = {isa = PBXBuildFile; fileRef = 110000000000000000000201 /* plan.md */; };
 		220000000000000000000001 /* SetEntryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000101 /* SetEntryTests.swift */; };
 		220000000000000000000002 /* WorkoutPlanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000102 /* WorkoutPlanTests.swift */; };
 /* End PBXBuildFile section */
@@ -45,7 +44,7 @@
 		220000000000000000000020 /* GymAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GymAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		110000000000000000000101 /* GymAppApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GymAppApp.swift; sourceTree = "<group>"; };
 		110000000000000000000102 /* WorkoutModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutModels.swift; sourceTree = "<group>"; };
-		110000000000000000000103 /* MarkdownWorkoutImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownWorkoutImporter.swift; sourceTree = "<group>"; };
+		110000000000000000000103 /* ExerciseCatalogLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseCatalogLoader.swift; sourceTree = "<group>"; };
 		110000000000000000000104 /* WorkoutStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutStore.swift; sourceTree = "<group>"; };
 		110000000000000000000105 /* GymAppRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GymAppRootView.swift; sourceTree = "<group>"; };
 		110000000000000000000106 /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
@@ -60,7 +59,6 @@
 		11000000000000000000010F /* CalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarView.swift; sourceTree = "<group>"; };
 		110000000000000000000110 /* LogPreviousWorkoutSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogPreviousWorkoutSheet.swift; sourceTree = "<group>"; };
 		110000000000000000000111 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		110000000000000000000201 /* plan.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; name = plan.md; path = "workout-tracker/plan.md"; sourceTree = SOURCE_ROOT; };
 		110000000000000000000205 /* exercemus-exercises.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "GymApp/exercemus-exercises.json"; sourceTree = SOURCE_ROOT; };
 		220000000000000000000101 /* SetEntryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetEntryTests.swift; sourceTree = "<group>"; };
 		220000000000000000000102 /* WorkoutPlanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutPlanTests.swift; sourceTree = "<group>"; };
@@ -89,7 +87,7 @@
 			children = (
 				110000000000000000000041 /* GymApp */,
 				220000000000000000000041 /* GymAppTests */,
-				110000000000000000000042 /* Seed Resources */,
+				110000000000000000000042 /* Catalog Resources */,
 				110000000000000000000050 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -107,13 +105,12 @@
 			path = GymApp;
 			sourceTree = "<group>";
 		};
-		110000000000000000000042 /* Seed Resources */ = {
+		110000000000000000000042 /* Catalog Resources */ = {
 			isa = PBXGroup;
 			children = (
-				110000000000000000000201 /* plan.md */,
 				110000000000000000000205 /* exercemus-exercises.json */,
 			);
-			name = "Seed Resources";
+			name = "Catalog Resources";
 			sourceTree = "<group>";
 		};
 		110000000000000000000043 /* Models */ = {
@@ -127,7 +124,7 @@
 		110000000000000000000044 /* Services */ = {
 			isa = PBXGroup;
 			children = (
-				110000000000000000000103 /* MarkdownWorkoutImporter.swift */,
+				110000000000000000000103 /* ExerciseCatalogLoader.swift */,
 				110000000000000000000104 /* WorkoutStore.swift */,
 			);
 			path = Services;
@@ -257,7 +254,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				11000000000000000000000F /* plan.md in Resources */,
 				110000000000000000000015 /* Assets.xcassets in Resources */,
 				110000000000000000000016 /* exercemus-exercises.json in Resources */,
 			);
@@ -272,7 +268,7 @@
 			files = (
 				110000000000000000000001 /* GymAppApp.swift in Sources */,
 				110000000000000000000002 /* WorkoutModels.swift in Sources */,
-				110000000000000000000003 /* MarkdownWorkoutImporter.swift in Sources */,
+				110000000000000000000003 /* ExerciseCatalogLoader.swift in Sources */,
 				110000000000000000000004 /* WorkoutStore.swift in Sources */,
 				110000000000000000000005 /* GymAppRootView.swift in Sources */,
 				110000000000000000000006 /* TodayView.swift in Sources */,
