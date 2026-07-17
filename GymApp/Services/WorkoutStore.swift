@@ -82,6 +82,14 @@ final class WorkoutStore: ObservableObject {
         Self.groupedWeeklyStatuses(weeklyWorkoutStatuses)
     }
 
+    var weeklyHomeWorkoutStatuses: [WeeklyWorkoutStatus] {
+        weeklyHomeWorkoutStatuses(for: now())
+    }
+
+    var weeklyHomeTemplateGroups: [WeeklyTemplateGroup] {
+        Self.groupedWeeklyStatuses(weeklyHomeWorkoutStatuses)
+    }
+
     var todayLoggedSessions: [WorkoutSession] {
         data.history
             .filter { Calendar.current.isDateInToday($0.date) }
@@ -112,28 +120,27 @@ final class WorkoutStore: ObservableObject {
     }
 
     func weeklyWorkoutStatuses(for date: Date) -> [WeeklyWorkoutStatus] {
+        weeklyReconciliation(for: date).plannedStatuses
+    }
+
+    func weeklyHomeWorkoutStatuses(for date: Date) -> [WeeklyWorkoutStatus] {
+        weeklyReconciliation(for: date).homeStatuses
+    }
+
+    private func weeklyReconciliation(for date: Date) -> WeeklyReconciliation {
         ensurePlanExists(for: date)
         let weekStart = Self.mondayWeekStart(for: date, calendar: calendar)
         guard let plan = data.weeklyPlans.first(where: { calendar.isDate($0.weekStart, inSameDayAs: weekStart) }) else {
-            return []
+            return WeeklyReconciliation(plannedStatuses: [], homeStatuses: [])
         }
 
-        return plan.occurrences
-            .sorted { $0.order < $1.order }
-            .compactMap { occurrence in
-                guard let template = template(for: occurrence) else { return nil }
-                let loggedSession = data.history
-                    .filter { $0.plannedOccurrenceID == occurrence.id }
-                    .sorted { $0.date > $1.date }
-                    .first
-
-                return WeeklyWorkoutStatus(
-                    occurrence: occurrence,
-                    template: template,
-                    displayName: Self.weeklyDisplayName(for: template.name),
-                    loggedSession: loggedSession
-                )
-            }
+        return Self.reconciledWeeklyStatuses(
+            plan: plan,
+            templates: data.templates,
+            weeklyPlans: data.weeklyPlans,
+            history: data.history,
+            calendar: calendar
+        )
     }
 
     static func groupedWeeklyStatuses(_ statuses: [WeeklyWorkoutStatus]) -> [WeeklyTemplateGroup] {
@@ -465,7 +472,8 @@ private extension WorkoutStore {
     func isOccurrence(_ occurrenceID: UUID, validFor date: Date) -> Bool {
         data.weeklyPlans.contains { plan in
             let interval = Self.mondayWeekInterval(for: plan.weekStart, calendar: calendar)
-            return interval.contains(date) && plan.occurrences.contains { $0.id == occurrenceID }
+            return date >= interval.start && date < interval.end &&
+                plan.occurrences.contains { $0.id == occurrenceID }
         }
     }
 
@@ -652,6 +660,138 @@ private extension WorkoutStore {
         let end = calendar.date(byAdding: .day, value: 7, to: start) ?? start
         return DateInterval(start: start, end: end)
     }
+
+    private static func reconciledWeeklyStatuses(
+        plan: WeeklyWorkoutPlan,
+        templates: [WorkoutTemplate],
+        weeklyPlans: [WeeklyWorkoutPlan],
+        history: [WorkoutSession],
+        calendar: Calendar
+    ) -> WeeklyReconciliation {
+        let occurrences = plan.occurrences.sorted { $0.order < $1.order }
+        let templatesByID = Dictionary(uniqueKeysWithValues: templates.map { ($0.id, $0) })
+        let occurrenceTemplateIDs = Dictionary(
+            uniqueKeysWithValues: weeklyPlans.flatMap(\.occurrences).map { ($0.id, $0.templateID) }
+        )
+        let interval = mondayWeekInterval(for: plan.weekStart, calendar: calendar)
+        var seenSessionIDs: Set<UUID> = []
+        let weeklySessions = history
+            .filter { $0.date >= interval.start && $0.date < interval.end }
+            .sorted { $0.date < $1.date }
+            .filter { seenSessionIDs.insert($0.id).inserted }
+        let sessionsByTemplate = Dictionary(grouping: weeklySessions) { session in
+            inferredTemplateID(
+                for: session,
+                templates: templates,
+                occurrenceTemplateIDs: occurrenceTemplateIDs
+            )
+        }
+
+        var plannedStatuses: [WeeklyWorkoutStatus] = []
+        var remainingSessionsByTemplate = sessionsByTemplate.reduce(into: [UUID: [WorkoutSession]]()) { result, entry in
+            guard let templateID = entry.key else { return }
+            result[templateID] = entry.value
+        }
+
+        for occurrence in occurrences {
+            guard let template = templatesByID[occurrence.templateID] else { continue }
+            let exactSessionIndex = remainingSessionsByTemplate[occurrence.templateID, default: []]
+                .firstIndex { $0.plannedOccurrenceID == occurrence.id }
+            let loggedSession = exactSessionIndex.map {
+                remainingSessionsByTemplate[occurrence.templateID, default: []].remove(at: $0)
+            }
+
+            plannedStatuses.append(
+                WeeklyWorkoutStatus(
+                    occurrence: occurrence,
+                    template: template,
+                    displayName: weeklyDisplayName(for: template.name),
+                    loggedSession: loggedSession
+                )
+            )
+        }
+
+        for index in plannedStatuses.indices where plannedStatuses[index].loggedSession == nil {
+            let templateID = plannedStatuses[index].template.id
+            guard !remainingSessionsByTemplate[templateID, default: []].isEmpty else { continue }
+            plannedStatuses[index] = WeeklyWorkoutStatus(
+                occurrence: plannedStatuses[index].occurrence,
+                template: plannedStatuses[index].template,
+                displayName: plannedStatuses[index].displayName,
+                loggedSession: remainingSessionsByTemplate[templateID, default: []].removeFirst()
+            )
+        }
+
+        var homeStatuses = plannedStatuses
+        let plannedTemplateIDs = Set(occurrences.map(\.templateID))
+        let unplannedTemplateIDs = templates
+            .filter { !plannedTemplateIDs.contains($0.id) }
+            .sorted { $0.order < $1.order }
+            .map(\.id)
+        let orderedTemplateIDs = occurrences.map(\.templateID).removingDuplicates() + unplannedTemplateIDs
+
+        for templateID in orderedTemplateIDs {
+            guard let template = templatesByID[templateID] else { continue }
+            for (offset, session) in remainingSessionsByTemplate[templateID, default: []].enumerated() {
+                homeStatuses.append(
+                    WeeklyWorkoutStatus(
+                        occurrence: PlannedWorkoutOccurrence(
+                            id: session.id,
+                            templateID: templateID,
+                            order: occurrences.count + offset
+                        ),
+                        template: template,
+                        displayName: weeklyDisplayName(for: template.name),
+                        loggedSession: session
+                    )
+                )
+            }
+        }
+
+        homeStatuses.sort { left, right in
+            let leftIndex = orderedTemplateIDs.firstIndex(of: left.template.id) ?? .max
+            let rightIndex = orderedTemplateIDs.firstIndex(of: right.template.id) ?? .max
+            if leftIndex != rightIndex {
+                return leftIndex < rightIndex
+            }
+            return left.occurrence.order < right.occurrence.order
+        }
+
+        return WeeklyReconciliation(
+            plannedStatuses: plannedStatuses,
+            homeStatuses: homeStatuses
+        )
+    }
+
+    private static func inferredTemplateID(
+        for session: WorkoutSession,
+        templates: [WorkoutTemplate],
+        occurrenceTemplateIDs: [UUID: UUID]
+    ) -> UUID? {
+        if let occurrenceID = session.plannedOccurrenceID,
+           let templateID = occurrenceTemplateIDs[occurrenceID] {
+            return templateID
+        }
+
+        let exerciseIDs = Set(session.exercises.compactMap(\.templateExerciseId))
+        if !exerciseIDs.isEmpty {
+            let identityMatches = templates.filter { template in
+                exerciseIDs.isSubset(of: Set(template.exercises.map(\.id)))
+            }
+            if identityMatches.count == 1 {
+                return identityMatches[0].id
+            }
+        }
+
+        let normalizedName = session.workoutName.normalizedExerciseName
+        let nameMatches = templates.filter { $0.name.normalizedExerciseName == normalizedName }
+        return nameMatches.count == 1 ? nameMatches[0].id : nil
+    }
+}
+
+private struct WeeklyReconciliation {
+    let plannedStatuses: [WeeklyWorkoutStatus]
+    let homeStatuses: [WeeklyWorkoutStatus]
 }
 
 struct WeeklyWorkoutStatus: Identifiable, Equatable {
@@ -701,5 +841,12 @@ private extension JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return decoder
+    }
+}
+
+private extension Sequence where Element: Hashable {
+    func removingDuplicates() -> [Element] {
+        var seen: Set<Element> = []
+        return filter { seen.insert($0).inserted }
     }
 }

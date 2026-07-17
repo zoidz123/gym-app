@@ -62,8 +62,8 @@ struct TodayView: View {
                     }
                 } else {
                     WeeklyProgressCard(
-                        statuses: store.weeklyWorkoutStatuses,
-                        groups: store.weeklyTemplateGroups,
+                        statuses: store.weeklyHomeWorkoutStatuses,
+                        groups: store.weeklyHomeTemplateGroups,
                         onLogPrevious: openPreviousWorkoutLogger
                     )
 
