@@ -476,6 +476,9 @@ private struct PlanTemplateDetailsSheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
+                        .buttonStyle(.borderedProminent)
+                        .tint(AppTheme.accent)
+                        .foregroundStyle(Color.white)
                 }
             }
         }
