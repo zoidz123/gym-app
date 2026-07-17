@@ -410,6 +410,7 @@ private struct PlanTemplateDetailsSheet: View {
     let edit: () -> Void
     let decrease: (WeeklyTemplateGroup) -> Void
     let remove: () -> Void
+    @State private var editingExercise: TemplateExercise?
 
     var body: some View {
         NavigationStack {
@@ -439,7 +440,7 @@ private struct PlanTemplateDetailsSheet: View {
                             ForEach(blocks) { block in
                                 switch block.kind {
                                 case .single(let exercise):
-                                    PlanExerciseRow(exercise: exercise)
+                                    exerciseButton(exercise)
                                 case .superset(let exercises):
                                     VStack(alignment: .leading, spacing: 0) {
                                         Label("Superset", systemImage: "link")
@@ -448,7 +449,7 @@ private struct PlanTemplateDetailsSheet: View {
                                             .padding(.bottom, 4)
 
                                         ForEach(exercises) { exercise in
-                                            PlanExerciseRow(exercise: exercise)
+                                            exerciseButton(exercise)
                                         }
                                     }
                                 }
@@ -480,6 +481,13 @@ private struct PlanTemplateDetailsSheet: View {
         }
         .presentationDetents(dynamicTypeSize.isAccessibilitySize ? [.large] : [.medium, .large])
         .presentationDragIndicator(.visible)
+        .fullScreenCover(item: $editingExercise) { exercise in
+            PlanExerciseEditorScreen(
+                initialExercise: exercise,
+                exerciseDefinitions: store.data.exerciseDefinitions,
+                save: saveExercise
+            )
+        }
     }
 
     private var group: WeeklyTemplateGroup? {
@@ -498,6 +506,36 @@ private struct PlanTemplateDetailsSheet: View {
                 }
             }
         )
+    }
+
+    private func exerciseButton(_ exercise: TemplateExercise) -> some View {
+        Button {
+            editingExercise = exercise
+        } label: {
+            HStack(spacing: 8) {
+                PlanExerciseRow(exercise: exercise)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .accessibilityHidden(true)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Edit \(exercise.name)")
+        .accessibilityHint("Opens full-screen exercise details")
+        .accessibilityIdentifier("plan-exercise-\(exercise.id.uuidString)")
+    }
+
+    private func saveExercise(_ exercise: TemplateExercise) {
+        guard var template = group?.template,
+              let exerciseIndex = template.exercises.firstIndex(where: { $0.id == exercise.id }) else {
+            return
+        }
+
+        template.exercises[exerciseIndex] = exercise
+        store.updateWorkout(template)
     }
 }
 
@@ -530,6 +568,109 @@ private struct PlanExerciseRow: View {
         .overlay(alignment: .bottom) {
             Divider()
         }
+    }
+}
+
+private struct PlanExerciseEditorScreen: View {
+    @Environment(\.dismiss) private var dismiss
+    let initialExercise: TemplateExercise
+    let exerciseDefinitions: [ExerciseDefinition]
+    let save: (TemplateExercise) -> Void
+
+    @State private var exercise: TemplateExercise
+    @State private var isConfirmingDiscard = false
+
+    init(
+        initialExercise: TemplateExercise,
+        exerciseDefinitions: [ExerciseDefinition],
+        save: @escaping (TemplateExercise) -> Void
+    ) {
+        self.initialExercise = initialExercise
+        self.exerciseDefinitions = exerciseDefinitions
+        self.save = save
+        _exercise = State(initialValue: initialExercise)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                ExerciseSearchField(
+                    title: "Exercise",
+                    placeholder: "Exercise name",
+                    text: $exercise.name,
+                    exerciseDefinitions: exerciseDefinitions
+                )
+
+                Section("Planned Sets") {
+                    Stepper("\(exercise.targetSetCount) sets", value: setCount, in: 1...10)
+                    TextField("Target reps", text: $exercise.targetRepsText)
+                        .textInputAutocapitalization(.never)
+                }
+
+                if exercise.supersetGroupId != nil {
+                    Section {
+                        Label("Part of a superset", systemImage: "link")
+                            .foregroundStyle(AppTheme.textSecondary)
+                    }
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(AppTheme.screenBackground)
+            .navigationTitle("Edit Exercise")
+            .navigationBarTitleDisplayMode(.inline)
+            .interactiveDismissDisabled(hasUnsavedChanges)
+            .accessibilityIdentifier("plan-exercise-editor")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        if hasUnsavedChanges {
+                            isConfirmingDiscard = true
+                        } else {
+                            dismiss()
+                        }
+                    }
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        exercise.name = ExerciseSearch.canonicalName(
+                            for: exercise.name,
+                            in: exerciseDefinitions
+                        )
+                        exercise.targetRepsText = exercise.targetRepsText.trimmed
+                        save(exercise)
+                        dismiss()
+                    }
+                    .disabled(exercise.name.trimmed.isEmpty)
+                    .accessibilityIdentifier("save-exercise")
+                }
+            }
+            .confirmationDialog(
+                "Discard exercise changes?",
+                isPresented: $isConfirmingDiscard,
+                titleVisibility: .visible
+            ) {
+                Button("Discard Changes", role: .destructive) {
+                    dismiss()
+                }
+
+                Button("Keep Editing", role: .cancel) {}
+            }
+        }
+    }
+
+    private var hasUnsavedChanges: Bool {
+        exercise != initialExercise
+    }
+
+    private var setCount: Binding<Int> {
+        Binding(
+            get: { exercise.targetSetCount },
+            set: { newValue in
+                exercise.targetSetCount = newValue
+                exercise.targetSetsText = "\(newValue) sets"
+            }
+        )
     }
 }
 

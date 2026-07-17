@@ -73,6 +73,30 @@ final class WorkoutPlanTests: XCTestCase {
         XCTAssertTrue(store.weeklyWorkoutStatuses.allSatisfy { !$0.isLogged })
     }
 
+    func testEditingExercisePreservesFrequencyCompletionAndHistory() throws {
+        let monday = try date("2026-07-13")
+        let workout = template(name: "Fresh Start", order: 0)
+        let store = try makeStore(data: appData(templates: [workout]), now: { monday })
+        store.addOccurrence(templateID: workout.id)
+        let completedStatus = try XCTUnwrap(store.weeklyWorkoutStatuses.first)
+        store.saveWorkoutSession(store.makeDraftSession(for: completedStatus, date: monday))
+        let occurrenceIDs = store.currentWeekOccurrences.map(\.id)
+        let history = store.data.history
+
+        var editedWorkout = workout
+        editedWorkout.exercises[0].name = "Ab Roller"
+        editedWorkout.exercises[0].targetSetCount = 4
+        editedWorkout.exercises[0].targetSetsText = "4 sets"
+        store.updateWorkout(editedWorkout)
+
+        XCTAssertEqual(store.data.templates.first?.exercises.first?.name, "Ab Roller")
+        XCTAssertEqual(store.data.templates.first?.exercises.first?.targetSetCount, 4)
+        XCTAssertEqual(store.currentWeekOccurrences.map(\.id), occurrenceIDs)
+        XCTAssertEqual(store.weeklyTemplateGroups.first?.frequency, 2)
+        XCTAssertEqual(store.weeklyTemplateGroups.first?.completedCount, 1)
+        XCTAssertEqual(store.data.history, history)
+    }
+
     func testExistingPersistedDataSurvivesCatalogEnrichmentAndReload() throws {
         let monday = try date("2026-07-13")
         let workout = template(name: "My Routine", order: 0)
