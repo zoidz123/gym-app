@@ -2,59 +2,45 @@ import SwiftUI
 
 struct PlanView: View {
     @EnvironmentObject private var store: WorkoutStore
-    @State private var expandedOccurrenceIDs = Set<UUID>()
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var expandedTemplateIDs = Set<UUID>()
     @State private var editingTemplate: WorkoutTemplate?
-    @State private var deletingOccurrence: PlannedWorkoutOccurrence?
+    @State private var removingGroup: WeeklyTemplateGroup?
+    @State private var confirmingCompletedDecrease: WeeklyTemplateGroup?
     @State private var isAddingWorkout = false
 
     var body: some View {
         NavigationStack {
             List {
-                AppScreenHeader("Plan") {
-                    HStack(spacing: 10) {
-                        EditButton()
-
-                        Button {
-                            isAddingWorkout = true
-                        } label: {
-                            Label("Add Workout", systemImage: "plus")
-                                .font(.subheadline.weight(.bold))
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(AppTheme.accent)
-                        .accessibilityIdentifier("plan-add-workout")
-                    }
-                }
+                planHeader
                 .listRowInsets(EdgeInsets())
                 .listRowBackground(AppTheme.screenBackground)
                 .listRowSeparator(.hidden)
 
                 Section {
-                    if store.currentWeekOccurrences.isEmpty {
+                    if store.weeklyTemplateGroups.isEmpty {
                         PlanEmptyState {
                             isAddingWorkout = true
                         }
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                     } else {
-                        ForEach(store.currentWeekOccurrences) { occurrence in
-                            if let template = store.template(for: occurrence) {
-                                PlanOccurrenceCard(
-                                    occurrence: occurrence,
-                                    template: template,
-                                    blocks: planBlocks(for: template),
-                                    isExpanded: expandedOccurrenceIDs.contains(occurrence.id),
-                                    toggle: { toggle(occurrence.id) },
-                                    edit: { editingTemplate = template },
-                                    addAnother: { store.addOccurrence(templateID: template.id) },
-                                    delete: { deletingOccurrence = occurrence }
-                                )
-                                .listRowInsets(EdgeInsets(top: 7, leading: 16, bottom: 7, trailing: 16))
-                                .listRowBackground(AppTheme.screenBackground)
-                                .listRowSeparator(.hidden)
-                            }
+                        ForEach(store.weeklyTemplateGroups) { group in
+                            PlanTemplateRow(
+                                group: group,
+                                blocks: planBlocks(for: group.template),
+                                isExpanded: expandedTemplateIDs.contains(group.id),
+                                toggle: { toggle(group.id) },
+                                edit: { editingTemplate = group.template },
+                                increment: { store.addOccurrence(templateID: group.id) },
+                                decrement: { decreaseFrequency(for: group) },
+                                remove: { removingGroup = group }
+                            )
+                            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 12))
+                            .listRowBackground(AppTheme.surface)
+                            .listRowSeparatorTint(AppTheme.divider)
                         }
-                        .onMove(perform: store.moveOccurrences)
+                        .onMove(perform: store.moveTemplateGroups)
                     }
                 } header: {
                     VStack(alignment: .leading, spacing: 3) {
@@ -92,42 +78,119 @@ struct PlanView: View {
                 )
             }
             .confirmationDialog(
-                "Remove this workout from the week?",
-                isPresented: deleteConfirmationIsPresented,
+                "Remove \(removingGroup?.template.name ?? "workout") from this week?",
+                isPresented: removeConfirmationIsPresented,
                 titleVisibility: .visible
             ) {
-                Button("Remove Workout", role: .destructive) {
-                    guard let deletingOccurrence else { return }
-                    expandedOccurrenceIDs.remove(deletingOccurrence.id)
-                    store.deleteOccurrence(id: deletingOccurrence.id)
-                    self.deletingOccurrence = nil
+                Button("Remove from This Week", role: .destructive) {
+                    guard let removingGroup else { return }
+                    expandedTemplateIDs.remove(removingGroup.id)
+                    store.removeTemplateFromWeek(templateID: removingGroup.id)
+                    self.removingGroup = nil
                 }
 
                 Button("Cancel", role: .cancel) {
-                    deletingOccurrence = nil
+                    removingGroup = nil
                 }
             } message: {
-                Text("The reusable workout and workout history will be kept.")
+                Text("The reusable workout and all workout history will be kept.")
+            }
+            .confirmationDialog(
+                "Decrease \(confirmingCompletedDecrease?.template.name ?? "workout") frequency?",
+                isPresented: completedDecreaseConfirmationIsPresented,
+                titleVisibility: .visible
+            ) {
+                Button("Remove One Completed Plan", role: .destructive) {
+                    guard let confirmingCompletedDecrease else { return }
+                    _ = store.decreaseFrequency(
+                        templateID: confirmingCompletedDecrease.id,
+                        allowCompletedRemoval: true
+                    )
+                    self.confirmingCompletedDecrease = nil
+                }
+
+                Button("Cancel", role: .cancel) {
+                    confirmingCompletedDecrease = nil
+                }
+            } message: {
+                Text("Every planned occurrence is complete. The workout session will stay in History, but one completion marker will be removed from this week.")
             }
         }
     }
 
-    private var deleteConfirmationIsPresented: Binding<Bool> {
+    @ViewBuilder
+    private var planHeader: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Plan")
+                    .font(.largeTitle.weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
+
+                EditButton()
+
+                addWorkoutButton
+                    .frame(maxWidth: .infinity)
+            }
+            .padding(.horizontal)
+            .padding(.top, 8)
+            .padding(.bottom, 10)
+        } else {
+            AppScreenHeader("Plan") {
+                HStack(spacing: 10) {
+                    EditButton()
+                    addWorkoutButton
+                }
+            }
+        }
+    }
+
+    private var addWorkoutButton: some View {
+        Button {
+            isAddingWorkout = true
+        } label: {
+            Label("Add Workout", systemImage: "plus")
+                .font(.subheadline.weight(.bold))
+                .lineLimit(1)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(AppTheme.accent)
+        .accessibilityIdentifier("plan-add-workout")
+    }
+
+    private var removeConfirmationIsPresented: Binding<Bool> {
         Binding(
-            get: { deletingOccurrence != nil },
+            get: { removingGroup != nil },
             set: { isPresented in
                 if !isPresented {
-                    deletingOccurrence = nil
+                    removingGroup = nil
+                }
+            }
+        )
+    }
+
+    private var completedDecreaseConfirmationIsPresented: Binding<Bool> {
+        Binding(
+            get: { confirmingCompletedDecrease != nil },
+            set: { isPresented in
+                if !isPresented {
+                    confirmingCompletedDecrease = nil
                 }
             }
         )
     }
 
     private func toggle(_ id: UUID) {
-        if expandedOccurrenceIDs.contains(id) {
-            expandedOccurrenceIDs.remove(id)
+        if expandedTemplateIDs.contains(id) {
+            expandedTemplateIDs.remove(id)
         } else {
-            expandedOccurrenceIDs.insert(id)
+            expandedTemplateIDs.insert(id)
+        }
+    }
+
+    private func decreaseFrequency(for group: WeeklyTemplateGroup) {
+        guard group.frequency > 1 else { return }
+        if store.decreaseFrequency(templateID: group.id) == .requiresCompletedConfirmation {
+            confirmingCompletedDecrease = group
         }
     }
 
@@ -176,65 +239,42 @@ private struct PlanEmptyState: View {
     }
 }
 
-private struct PlanOccurrenceCard: View {
-    let occurrence: PlannedWorkoutOccurrence
-    let template: WorkoutTemplate
+private struct PlanTemplateRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let group: WeeklyTemplateGroup
     let blocks: [PlanBlock]
     let isExpanded: Bool
     let toggle: () -> Void
     let edit: () -> Void
-    let addAnother: () -> Void
-    let delete: () -> Void
+    let increment: () -> Void
+    let decrement: () -> Void
+    let remove: () -> Void
 
     var body: some View {
-        AppCard {
-            HStack(spacing: 12) {
-                Button(action: toggle) {
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text(template.name)
-                                .font(.title3.weight(.bold))
-                                .foregroundStyle(AppTheme.ink)
-                                .lineLimit(2)
+        VStack(alignment: .leading, spacing: 0) {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 10) {
+                        templateDisclosure
+                        actionsMenu
+                    }
 
-                            Text("Workout \(occurrence.order + 1) · \(template.exercises.count) exercises")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(AppTheme.textSecondary)
-                                .lineLimit(1)
-                        }
-
-                        Spacer(minLength: 6)
-
-                        Image(systemName: "chevron.down")
-                            .font(.headline.weight(.bold))
+                    HStack {
+                        Text("Weekly frequency")
+                            .font(.caption)
                             .foregroundStyle(AppTheme.textSecondary)
-                            .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                        Spacer()
+                        frequencyButtons
                     }
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-
-                Menu {
-                    Button(action: edit) {
-                        Label("Edit Workout", systemImage: "pencil")
-                    }
-
-                    Button(action: addAnother) {
-                        Label("Add Another This Week", systemImage: "plus.square.on.square")
-                    }
-
-                    Divider()
-
-                    Button(role: .destructive, action: delete) {
-                        Label("Remove from This Week", systemImage: "trash")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .font(.title3.weight(.semibold))
-                        .frame(width: 44, height: 44)
+                .padding(.vertical, 8)
+            } else {
+                HStack(spacing: 12) {
+                    templateDisclosure
+                    frequencyButtons
+                    actionsMenu
                 }
-                .foregroundStyle(AppTheme.accent)
-                .accessibilityLabel("Actions for \(template.name), workout \(occurrence.order + 1)")
+                .padding(.vertical, 7)
             }
 
             if isExpanded {
@@ -269,7 +309,81 @@ private struct PlanOccurrenceCard: View {
             }
         }
         .animation(.snappy, value: isExpanded)
-        .accessibilityIdentifier("plan-occurrence-\(occurrence.id.uuidString)")
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("plan-template-\(group.id.uuidString)")
+    }
+
+    private var templateDisclosure: some View {
+        Button(action: toggle) {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(group.template.name)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(AppTheme.ink)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+
+                    Text("\(group.frequency)x this week")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 4)
+
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .rotationEffect(.degrees(isExpanded ? 180 : 0))
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var frequencyButtons: some View {
+        HStack(spacing: 2) {
+            Button(action: decrement) {
+                Image(systemName: "minus")
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(group.frequency > 1 ? AppTheme.accent : AppTheme.textTertiary)
+            .disabled(group.frequency <= 1)
+            .accessibilityLabel("Decrease \(group.template.name) frequency")
+
+            Button(action: increment) {
+                Image(systemName: "plus")
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(AppTheme.accent)
+            .accessibilityLabel("Increase \(group.template.name) frequency")
+        }
+        .font(.subheadline.weight(.bold))
+    }
+
+    private var actionsMenu: some View {
+        Menu {
+            Button(action: edit) {
+                Label("Edit Workout", systemImage: "pencil")
+            }
+
+            Button(action: increment) {
+                Label("Add Another This Week", systemImage: "plus.square.on.square")
+            }
+
+            Divider()
+
+            Button(role: .destructive, action: remove) {
+                Label("Remove from This Week", systemImage: "trash")
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.headline.weight(.bold))
+                .frame(width: 32, height: 32)
+        }
+        .foregroundStyle(AppTheme.accent)
+        .accessibilityLabel("Actions for \(group.template.name)")
     }
 }
 

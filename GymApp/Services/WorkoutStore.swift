@@ -85,6 +85,10 @@ final class WorkoutStore: ObservableObject {
         weeklyWorkoutStatuses(for: now())
     }
 
+    var weeklyTemplateGroups: [WeeklyTemplateGroup] {
+        Self.groupedWeeklyStatuses(weeklyWorkoutStatuses)
+    }
+
     var todayLoggedSessions: [WorkoutSession] {
         data.history
             .filter { Calendar.current.isDateInToday($0.date) }
@@ -139,6 +143,26 @@ final class WorkoutStore: ObservableObject {
             }
     }
 
+    static func groupedWeeklyStatuses(_ statuses: [WeeklyWorkoutStatus]) -> [WeeklyTemplateGroup] {
+        var orderedTemplateIDs: [UUID] = []
+        var statusesByTemplate: [UUID: [WeeklyWorkoutStatus]] = [:]
+
+        for status in statuses {
+            if statusesByTemplate[status.template.id] == nil {
+                orderedTemplateIDs.append(status.template.id)
+            }
+            statusesByTemplate[status.template.id, default: []].append(status)
+        }
+
+        return orderedTemplateIDs.compactMap { templateID in
+            guard let groupedStatuses = statusesByTemplate[templateID],
+                  let template = groupedStatuses.first?.template else {
+                return nil
+            }
+            return WeeklyTemplateGroup(template: template, statuses: groupedStatuses)
+        }
+    }
+
     func startWorkout(from template: WorkoutTemplate) {
         data.activeSession = makeSession(from: template, plannedOccurrenceID: nil)
     }
@@ -180,6 +204,51 @@ final class WorkoutStore: ObservableObject {
         )
     }
 
+    @discardableResult
+    func decreaseFrequency(
+        templateID: UUID,
+        allowCompletedRemoval: Bool = false
+    ) -> FrequencyDecreaseResult {
+        ensurePlanExists(for: now())
+        guard let planIndex = currentPlanIndex(for: now()) else {
+            return .notFound
+        }
+
+        let matchingOccurrences = data.weeklyPlans[planIndex].occurrences
+            .filter { $0.templateID == templateID }
+            .sorted { $0.order < $1.order }
+        guard let occurrenceToRemove = matchingOccurrences.last(where: { occurrence in
+            !data.history.contains { $0.plannedOccurrenceID == occurrence.id }
+        }) else {
+            guard allowCompletedRemoval, let completedOccurrence = matchingOccurrences.last else {
+                return matchingOccurrences.isEmpty ? .notFound : .requiresCompletedConfirmation
+            }
+            unlinkHistory(from: completedOccurrence.id)
+            removeOccurrence(completedOccurrence.id, fromPlanAt: planIndex)
+            return .removedCompleted
+        }
+
+        removeOccurrence(occurrenceToRemove.id, fromPlanAt: planIndex)
+        return .removedUncompleted
+    }
+
+    func removeTemplateFromWeek(templateID: UUID) {
+        ensurePlanExists(for: now())
+        guard let planIndex = currentPlanIndex(for: now()) else { return }
+        let occurrenceIDs = Set(
+            data.weeklyPlans[planIndex].occurrences
+                .filter { $0.templateID == templateID }
+                .map(\.id)
+        )
+        guard !occurrenceIDs.isEmpty else { return }
+
+        for occurrenceID in occurrenceIDs {
+            unlinkHistory(from: occurrenceID)
+        }
+        data.weeklyPlans[planIndex].occurrences.removeAll { occurrenceIDs.contains($0.id) }
+        normalizeOccurrenceOrders(in: &data.weeklyPlans[planIndex])
+    }
+
     func createWorkout(_ template: WorkoutTemplate) {
         var template = template
         template.order = data.templates.count
@@ -201,8 +270,7 @@ final class WorkoutStore: ObservableObject {
     func deleteOccurrence(id: UUID) {
         ensurePlanExists(for: now())
         guard let planIndex = currentPlanIndex(for: now()) else { return }
-        data.weeklyPlans[planIndex].occurrences.removeAll { $0.id == id }
-        normalizeOccurrenceOrders(in: &data.weeklyPlans[planIndex])
+        removeOccurrence(id, fromPlanAt: planIndex)
     }
 
     func moveOccurrences(from source: IndexSet, to destination: Int) {
@@ -217,6 +285,30 @@ final class WorkoutStore: ObservableObject {
         let insertionIndex = max(0, min(destination - removedBeforeDestination, occurrences.count))
         occurrences.insert(contentsOf: moving, at: insertionIndex)
         data.weeklyPlans[planIndex].occurrences = occurrences
+        normalizeOccurrenceOrders(in: &data.weeklyPlans[planIndex])
+    }
+
+    func moveTemplateGroups(from source: IndexSet, to destination: Int) {
+        ensurePlanExists(for: now())
+        guard let planIndex = currentPlanIndex(for: now()) else { return }
+        let occurrences = data.weeklyPlans[planIndex].occurrences.sorted { $0.order < $1.order }
+        var templateIDs: [UUID] = []
+        for occurrence in occurrences where !templateIDs.contains(occurrence.templateID) {
+            templateIDs.append(occurrence.templateID)
+        }
+
+        let moving = source.sorted().map { templateIDs[$0] }
+        for index in source.sorted(by: >) {
+            templateIDs.remove(at: index)
+        }
+        let removedBeforeDestination = source.filter { $0 < destination }.count
+        let insertionIndex = max(0, min(destination - removedBeforeDestination, templateIDs.count))
+        templateIDs.insert(contentsOf: moving, at: insertionIndex)
+
+        let occurrencesByTemplate = Dictionary(grouping: occurrences, by: \.templateID)
+        data.weeklyPlans[planIndex].occurrences = templateIDs.flatMap {
+            occurrencesByTemplate[$0, default: []].sorted { $0.order < $1.order }
+        }
         normalizeOccurrenceOrders(in: &data.weeklyPlans[planIndex])
     }
 
@@ -383,6 +475,17 @@ private extension WorkoutStore {
         for index in plan.occurrences.indices {
             plan.occurrences[index].order = index
         }
+    }
+
+    func unlinkHistory(from occurrenceID: UUID) {
+        for historyIndex in data.history.indices where data.history[historyIndex].plannedOccurrenceID == occurrenceID {
+            data.history[historyIndex].plannedOccurrenceID = nil
+        }
+    }
+
+    func removeOccurrence(_ occurrenceID: UUID, fromPlanAt planIndex: Int) {
+        data.weeklyPlans[planIndex].occurrences.removeAll { $0.id == occurrenceID }
+        normalizeOccurrenceOrders(in: &data.weeklyPlans[planIndex])
     }
 
     private func save() {
@@ -595,6 +698,27 @@ struct WeeklyWorkoutStatus: Identifiable, Equatable {
     var isLogged: Bool {
         loggedSession != nil
     }
+}
+
+struct WeeklyTemplateGroup: Identifiable, Equatable {
+    var id: UUID { template.id }
+    let template: WorkoutTemplate
+    let statuses: [WeeklyWorkoutStatus]
+
+    var frequency: Int {
+        statuses.count
+    }
+
+    var completedCount: Int {
+        statuses.filter(\.isLogged).count
+    }
+}
+
+enum FrequencyDecreaseResult: Equatable {
+    case removedUncompleted
+    case requiresCompletedConfirmation
+    case removedCompleted
+    case notFound
 }
 
 private extension JSONEncoder {

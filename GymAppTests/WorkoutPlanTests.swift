@@ -102,7 +102,7 @@ final class WorkoutPlanTests: XCTestCase {
         XCTAssertEqual(store.data.weeklyPlans.first?.occurrences.count, 3)
     }
 
-    func testHomeStatusesCountPlannedOccurrencesAndUseOccurrenceCheckmarks() throws {
+    func testHomeGroupsTemplatesWithFrequencyMarkersAndIndependentCompletion() throws {
         let wednesday = try date("2026-07-15")
         let legs = template(name: "Leg Day", order: 0)
         let zone2 = template(name: "Zone 2 Cardio", order: 1)
@@ -118,6 +118,78 @@ final class WorkoutPlanTests: XCTestCase {
         XCTAssertEqual(statuses.filter(\.isLogged).count, 1)
         XCTAssertEqual(statuses.filter { $0.displayName == "Zone 2" }.count, 2)
         XCTAssertEqual(statuses.last?.loggedSession?.id, logged.id)
+
+        let groups = store.weeklyTemplateGroups
+        XCTAssertEqual(groups.map(\.template.id), [legs.id, zone2.id])
+        XCTAssertEqual(groups.last?.frequency, 2)
+        XCTAssertEqual(groups.last?.completedCount, 1)
+        XCTAssertEqual(groups.last?.statuses.map(\.id), statuses.suffix(2).map(\.id))
+    }
+
+    func testFrequencyIncrementAndDecrementRemoveUncompletedOccurrencesFirst() throws {
+        let wednesday = try date("2026-07-15")
+        let zone2 = template(name: "Zone 2 Cardio", order: 0)
+        let store = try makeStore(data: appData(templates: [zone2]), now: { wednesday })
+        store.addOccurrence(templateID: zone2.id)
+        store.addOccurrence(templateID: zone2.id)
+        let originalIDs = store.currentWeekOccurrences.map(\.id)
+
+        let completedStatus = store.weeklyWorkoutStatuses[1]
+        store.saveWorkoutSession(store.makeDraftSession(for: completedStatus, date: wednesday))
+
+        XCTAssertEqual(store.decreaseFrequency(templateID: zone2.id), .removedUncompleted)
+        XCTAssertEqual(store.currentWeekOccurrences.map(\.id), Array(originalIDs.prefix(2)))
+        XCTAssertEqual(store.data.history.first?.plannedOccurrenceID, originalIDs[1])
+
+        XCTAssertEqual(store.decreaseFrequency(templateID: zone2.id), .removedUncompleted)
+        XCTAssertEqual(store.currentWeekOccurrences.map(\.id), [originalIDs[1]])
+        XCTAssertTrue(store.weeklyWorkoutStatuses[0].isLogged)
+    }
+
+    func testCompletedFrequencyDecreaseRequiresConfirmationAndPreservesHistory() throws {
+        let thursday = try date("2026-07-16")
+        let zone2 = template(name: "Zone 2 Cardio", order: 0)
+        let store = try makeStore(data: appData(templates: [zone2]), now: { thursday })
+        store.addOccurrence(templateID: zone2.id)
+
+        for status in store.weeklyWorkoutStatuses {
+            store.saveWorkoutSession(store.makeDraftSession(for: status, date: thursday))
+        }
+        let removedOccurrenceID = try XCTUnwrap(store.currentWeekOccurrences.last?.id)
+
+        XCTAssertEqual(store.decreaseFrequency(templateID: zone2.id), .requiresCompletedConfirmation)
+        XCTAssertEqual(store.currentWeekOccurrences.count, 2)
+
+        XCTAssertEqual(
+            store.decreaseFrequency(templateID: zone2.id, allowCompletedRemoval: true),
+            .removedCompleted
+        )
+        XCTAssertEqual(store.currentWeekOccurrences.count, 1)
+        XCTAssertEqual(store.data.history.count, 2)
+        XCTAssertTrue(store.data.history.contains { $0.plannedOccurrenceID == nil })
+        XCTAssertFalse(store.data.history.contains { $0.plannedOccurrenceID == removedOccurrenceID })
+    }
+
+    func testGroupedReorderKeepsOccurrenceOrderDeterministic() throws {
+        let monday = try date("2026-07-13")
+        let push = template(name: "Push", order: 0)
+        let zone2 = template(name: "Zone 2 Cardio", order: 1)
+        let legs = template(name: "Legs", order: 2)
+        let store = try makeStore(data: appData(templates: [push, zone2, legs]), now: { monday })
+        store.addOccurrence(templateID: zone2.id)
+        let zoneOccurrenceIDs = store.currentWeekOccurrences
+            .filter { $0.templateID == zone2.id }
+            .map(\.id)
+
+        store.moveTemplateGroups(from: IndexSet(integer: 1), to: 0)
+
+        XCTAssertEqual(store.weeklyTemplateGroups.map(\.template.id), [zone2.id, push.id, legs.id])
+        XCTAssertEqual(
+            store.currentWeekOccurrences.map(\.templateID),
+            [zone2.id, zone2.id, push.id, legs.id]
+        )
+        XCTAssertEqual(Array(store.currentWeekOccurrences.prefix(2)).map(\.id), zoneOccurrenceIDs)
+        XCTAssertEqual(store.currentWeekOccurrences.map(\.order), Array(0..<4))
     }
 
     func testAdHocAndHistoryBehaviorRemainIndependentOfPlan() throws {
