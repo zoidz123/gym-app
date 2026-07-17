@@ -119,22 +119,13 @@ final class WorkoutStore: ObservableObject {
             return []
         }
 
-        return plan.occurrences
-            .sorted { $0.order < $1.order }
-            .compactMap { occurrence in
-                guard let template = template(for: occurrence) else { return nil }
-                let loggedSession = data.history
-                    .filter { $0.plannedOccurrenceID == occurrence.id }
-                    .sorted { $0.date > $1.date }
-                    .first
-
-                return WeeklyWorkoutStatus(
-                    occurrence: occurrence,
-                    template: template,
-                    displayName: Self.weeklyDisplayName(for: template.name),
-                    loggedSession: loggedSession
-                )
-            }
+        return Self.reconciledWeeklyStatuses(
+            plan: plan,
+            templates: data.templates,
+            weeklyPlans: data.weeklyPlans,
+            history: data.history,
+            calendar: calendar
+        )
     }
 
     static func groupedWeeklyStatuses(_ statuses: [WeeklyWorkoutStatus]) -> [WeeklyTemplateGroup] {
@@ -211,8 +202,13 @@ final class WorkoutStore: ObservableObject {
         let matchingOccurrences = data.weeklyPlans[planIndex].occurrences
             .filter { $0.templateID == templateID }
             .sorted { $0.order < $1.order }
+        let completedOccurrenceIDs = Set(
+            weeklyWorkoutStatuses
+                .filter(\.isLogged)
+                .map(\.occurrence.id)
+        )
         guard let occurrenceToRemove = matchingOccurrences.last(where: { occurrence in
-            !data.history.contains { $0.plannedOccurrenceID == occurrence.id }
+            !completedOccurrenceIDs.contains(occurrence.id)
         }) else {
             guard allowCompletedRemoval, let completedOccurrence = matchingOccurrences.last else {
                 return matchingOccurrences.isEmpty ? .notFound : .requiresCompletedConfirmation
@@ -585,6 +581,96 @@ private extension WorkoutStore {
 
         data.weeklyPlans.sort { $0.weekStart < $1.weekStart }
         return data
+    }
+
+    private static func reconciledWeeklyStatuses(
+        plan: WeeklyWorkoutPlan,
+        templates: [WorkoutTemplate],
+        weeklyPlans: [WeeklyWorkoutPlan],
+        history: [WorkoutSession],
+        calendar: Calendar
+    ) -> [WeeklyWorkoutStatus] {
+        let occurrences = plan.occurrences.sorted { $0.order < $1.order }
+        let templatesByID = Dictionary(uniqueKeysWithValues: templates.map { ($0.id, $0) })
+        let occurrenceTemplateIDs = Dictionary(
+            uniqueKeysWithValues: weeklyPlans.flatMap(\.occurrences).map { ($0.id, $0.templateID) }
+        )
+        let interval = mondayWeekInterval(for: plan.weekStart, calendar: calendar)
+        var remainingSessionIndices = history.indices
+            .filter { interval.contains(history[$0].date) }
+            .sorted { history[$0].date < history[$1].date }
+        var sessionIndexByOccurrenceID: [UUID: Int] = [:]
+
+        // Preserve explicit links first. Removing an assigned index makes it
+        // impossible for one session to complete two planned occurrences.
+        for occurrence in occurrences {
+            guard let candidateOffset = remainingSessionIndices.firstIndex(where: { sessionIndex in
+                history[sessionIndex].plannedOccurrenceID == occurrence.id
+            }) else {
+                continue
+            }
+
+            sessionIndexByOccurrenceID[occurrence.id] = remainingSessionIndices.remove(at: candidateOffset)
+        }
+
+        // Manual sessions and legacy sessions can satisfy a remaining occurrence
+        // when their template identity is unambiguous. This is computed for Home
+        // without rewriting or duplicating the persisted History record.
+        for occurrence in occurrences where sessionIndexByOccurrenceID[occurrence.id] == nil {
+            guard templatesByID[occurrence.templateID] != nil,
+                  let candidateOffset = remainingSessionIndices.firstIndex(where: { sessionIndex in
+                      inferredTemplateID(
+                        for: history[sessionIndex],
+                        templates: templates,
+                        occurrenceTemplateIDs: occurrenceTemplateIDs
+                      ) == occurrence.templateID
+                  }) else {
+                continue
+            }
+
+            sessionIndexByOccurrenceID[occurrence.id] = remainingSessionIndices.remove(at: candidateOffset)
+        }
+
+        return occurrences.compactMap { occurrence in
+            guard let template = templatesByID[occurrence.templateID] else { return nil }
+            let loggedSession = sessionIndexByOccurrenceID[occurrence.id].map { history[$0] }
+
+            return WeeklyWorkoutStatus(
+                occurrence: occurrence,
+                template: template,
+                displayName: weeklyDisplayName(for: template.name),
+                loggedSession: loggedSession
+            )
+        }
+    }
+
+    private static func inferredTemplateID(
+        for session: WorkoutSession,
+        templates: [WorkoutTemplate],
+        occurrenceTemplateIDs: [UUID: UUID]
+    ) -> UUID? {
+        if let occurrenceID = session.plannedOccurrenceID,
+           let templateID = occurrenceTemplateIDs[occurrenceID] {
+            return templateID
+        }
+
+        let exerciseIDs = Set(session.exercises.compactMap(\.templateExerciseId))
+        if !exerciseIDs.isEmpty {
+            let identityMatches = templates.filter { template in
+                let templateExerciseIDs = Set(template.exercises.map(\.id))
+                return exerciseIDs.isSubset(of: templateExerciseIDs)
+            }
+
+            if identityMatches.count == 1 {
+                return identityMatches[0].id
+            }
+        }
+
+        let normalizedName = session.workoutName.normalizedExerciseName
+        let nameMatches = templates.filter {
+            $0.name.normalizedExerciseName == normalizedName
+        }
+        return nameMatches.count == 1 ? nameMatches[0].id : nil
     }
 
     private static func applyingCurrentPlanUpdates(to data: GymAppData) -> GymAppData {

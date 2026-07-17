@@ -180,6 +180,73 @@ final class WorkoutPlanTests: XCTestCase {
         )
     }
 
+    func testDuplicateTemplateOccurrencesReconcileTwoDistinctCompletions() throws {
+        let thursday = try date("2026-07-16")
+        let zone2 = template(name: "Zone 2 Cardio", order: 0)
+        let store = try makeStore(data: appData(templates: [zone2]), now: { thursday })
+        store.addOccurrence(templateID: zone2.id)
+
+        let firstStatus = try XCTUnwrap(store.weeklyWorkoutStatuses.first)
+        store.saveWorkoutSession(store.makeDraftSession(for: firstStatus, date: thursday))
+        let manualSession = store.makeDraftSession(from: zone2, date: try date("2026-07-17"))
+        store.saveWorkoutSession(manualSession)
+
+        let statuses = store.weeklyWorkoutStatuses
+        XCTAssertEqual(statuses.count, 2)
+        XCTAssertEqual(statuses.filter(\.isLogged).count, 2)
+        XCTAssertEqual(Set(statuses.compactMap { $0.loggedSession?.id }).count, 2)
+        XCTAssertEqual(store.weeklyTemplateGroups.first?.completedCount, 2)
+        XCTAssertNil(store.data.history.first { $0.id == manualSession.id }?.plannedOccurrenceID)
+    }
+
+    func testOneSessionCannotCompleteTwoDuplicateOccurrences() throws {
+        let thursday = try date("2026-07-16")
+        let zone2 = template(name: "Zone 2 Cardio", order: 0)
+        let store = try makeStore(data: appData(templates: [zone2]), now: { thursday })
+        store.addOccurrence(templateID: zone2.id)
+
+        store.saveWorkoutSession(store.makeDraftSession(from: zone2, date: thursday))
+
+        XCTAssertEqual(store.weeklyWorkoutStatuses.filter(\.isLogged).count, 1)
+        XCTAssertEqual(store.weeklyTemplateGroups.first?.completedCount, 1)
+    }
+
+    func testMixedPlannedAndLegacySessionsCompleteSeparateOccurrencesWithoutMutation() throws {
+        let thursday = try date("2026-07-16")
+        let zone2 = template(name: "Zone 2 Cardio", order: 0)
+        let store = try makeStore(data: appData(templates: [zone2]), now: { thursday })
+        store.addOccurrence(templateID: zone2.id)
+
+        let plannedStatus = try XCTUnwrap(store.weeklyWorkoutStatuses.first)
+        store.saveWorkoutSession(store.makeDraftSession(for: plannedStatus, date: thursday))
+        let legacySession = session(name: "Zone 2 Cardio", date: try date("2026-07-17"))
+        store.saveWorkoutSession(legacySession)
+        let persistedHistory = store.data.history
+
+        XCTAssertEqual(store.weeklyWorkoutStatuses.filter(\.isLogged).count, 2)
+        XCTAssertEqual(store.data.history, persistedHistory)
+        XCTAssertNil(store.data.history.first { $0.id == legacySession.id }?.plannedOccurrenceID)
+    }
+
+    func testSameNameDistinctTemplatesUseExerciseIdentityAndRejectAmbiguousLegacyName() throws {
+        let thursday = try date("2026-07-16")
+        let treadmill = template(name: "Zone 2 Cardio", order: 0)
+        let bike = template(name: "Zone 2 Cardio", order: 1)
+        let store = try makeStore(data: appData(templates: [treadmill, bike]), now: { thursday })
+
+        let bikeSession = store.makeDraftSession(from: bike, date: thursday)
+        store.saveWorkoutSession(bikeSession)
+        store.saveWorkoutSession(session(name: "Zone 2 Cardio", date: try date("2026-07-17")))
+
+        let statuses = store.weeklyWorkoutStatuses
+        XCTAssertFalse(try XCTUnwrap(statuses.first { $0.template.id == treadmill.id }).isLogged)
+        XCTAssertEqual(
+            try XCTUnwrap(statuses.first { $0.template.id == bike.id }).loggedSession?.id,
+            bikeSession.id
+        )
+        XCTAssertEqual(statuses.filter(\.isLogged).count, 1)
+    }
+
     func testMondayRolloverCopiesPlanWithFreshIDsWithoutOverwritingEdits() throws {
         var currentDate = try date("2026-07-13")
         let push = template(name: "Push", order: 0)
@@ -200,6 +267,39 @@ final class WorkoutPlanTests: XCTestCase {
         store.deleteOccurrence(id: try XCTUnwrap(rolledOccurrences.first?.id))
         XCTAssertEqual(store.currentWeekOccurrences.count, 2)
         XCTAssertEqual(store.data.weeklyPlans.first?.occurrences.count, 3)
+    }
+
+    func testMondayRolloverDoesNotReusePriorWeekManualCompletion() throws {
+        var currentDate = try date("2026-07-19")
+        let zone2 = template(name: "Zone 2 Cardio", order: 0)
+        let store = try makeStore(data: appData(templates: [zone2]), now: { currentDate })
+        store.saveWorkoutSession(store.makeDraftSession(from: zone2, date: currentDate))
+        XCTAssertEqual(store.weeklyWorkoutStatuses.filter(\.isLogged).count, 1)
+
+        currentDate = try date("2026-07-20")
+
+        XCTAssertEqual(store.weeklyWorkoutStatuses.count, 1)
+        XCTAssertEqual(store.weeklyWorkoutStatuses.filter(\.isLogged).count, 0)
+    }
+
+    func testReconciledManualCompletionsPersistAcrossRelaunchWithoutRewritingHistory() throws {
+        let thursday = try date("2026-07-16")
+        let zone2 = template(name: "Zone 2 Cardio", order: 0)
+        let url = try writeData(appData(templates: [zone2]))
+        var store: WorkoutStore? = WorkoutStore(saveURL: url, now: { thursday }, calendar: testCalendar)
+        store?.addOccurrence(templateID: zone2.id)
+        let manualSession = try XCTUnwrap(store?.makeDraftSession(from: zone2, date: thursday))
+        store?.saveWorkoutSession(manualSession)
+        let historyBeforeRelaunch = try XCTUnwrap(store?.data.history)
+        let occurrenceIDs = try XCTUnwrap(store?.currentWeekOccurrences.map(\.id))
+        store = nil
+
+        let reloadedStore = WorkoutStore(saveURL: url, now: { thursday }, calendar: testCalendar)
+
+        XCTAssertEqual(reloadedStore.currentWeekOccurrences.map(\.id), occurrenceIDs)
+        XCTAssertEqual(reloadedStore.weeklyWorkoutStatuses.filter(\.isLogged).count, 1)
+        XCTAssertEqual(reloadedStore.data.history, historyBeforeRelaunch)
+        XCTAssertNil(reloadedStore.data.history.first?.plannedOccurrenceID)
     }
 
     func testHomeGroupsTemplatesWithFrequencyMarkersAndIndependentCompletion() throws {
@@ -312,7 +412,7 @@ final class WorkoutPlanTests: XCTestCase {
         XCTAssertEqual(store.currentWeekOccurrences.map(\.order), Array(0..<4))
     }
 
-    func testAdHocAndHistoryBehaviorRemainIndependentOfPlan() throws {
+    func testMatchingManualWorkoutCountsOnceWhilePriorWeekHistoryStaysIndependent() throws {
         let friday = try date("2026-07-17")
         let push = template(name: "Push", order: 0)
         let url = try writeData(appData(templates: [push]))
@@ -327,7 +427,7 @@ final class WorkoutPlanTests: XCTestCase {
 
         XCTAssertNil(store?.data.history.first?.plannedOccurrenceID)
         XCTAssertEqual(store?.data.history.first?.workoutName, "Push")
-        XCTAssertEqual(store?.weeklyWorkoutStatuses.filter(\.isLogged).count, 0)
+        XCTAssertEqual(store?.weeklyWorkoutStatuses.filter(\.isLogged).count, 1)
 
         let previousDate = try date("2026-07-10")
         let previous = try XCTUnwrap(store?.makeDraftSession(from: push, date: previousDate))
@@ -338,7 +438,7 @@ final class WorkoutPlanTests: XCTestCase {
         store = nil
         let reloadedStore = WorkoutStore(saveURL: url, now: { friday }, calendar: testCalendar)
         XCTAssertTrue(reloadedStore.data.history.allSatisfy { $0.plannedOccurrenceID == nil })
-        XCTAssertEqual(reloadedStore.weeklyWorkoutStatuses.filter(\.isLogged).count, 0)
+        XCTAssertEqual(reloadedStore.weeklyWorkoutStatuses.filter(\.isLogged).count, 1)
     }
 
     private var testCalendar: Calendar {

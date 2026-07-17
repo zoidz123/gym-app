@@ -2,6 +2,7 @@
 
 Stacked is a native SwiftUI workout tracker for planning routines, logging active workouts, and reviewing workout history.
 It supports reusable workout templates, supersets, previous-set hints, calendar history, and a searchable exercise catalog.
+Stacked follows the iOS system appearance and supports both light and dark mode.
 
 ## Requirements
 

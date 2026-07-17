@@ -446,7 +446,7 @@ struct InlineNumericField: UIViewRepresentable {
             doneButton.setTitle("Done", for: .normal)
             doneButton.titleLabel?.font = .preferredFont(forTextStyle: .subheadline)
             doneButton.titleLabel?.adjustsFontForContentSizeCategory = true
-            doneButton.tintColor = UIColor(red: 1.0, green: 0.22, blue: 0.36, alpha: 1)
+            doneButton.tintColor = UIColor(AppTheme.accent)
             doneButton.addTarget(self, action: #selector(done), for: .touchUpInside)
             doneButton.accessibilityLabel = "Done editing \(parent.accessibilityLabel.lowercased())"
             accessory.addSubview(doneButton)
