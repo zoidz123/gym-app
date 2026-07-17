@@ -658,14 +658,6 @@ private extension WorkoutStore {
         }
     }
 
-    private static let logDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter
-    }()
-
     private static func weeklyDisplayName(for name: String) -> String {
         if name.normalizedExerciseName == "zone 2 cardio" {
             return "Zone 2"

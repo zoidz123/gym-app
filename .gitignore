@@ -4,6 +4,8 @@ build/
 *.xcuserstate
 xcuserdata/
 *.xcscmblueprint
+*.xccheckout
+*.moved-aside
 
 # Swift Package Manager
 .build/
@@ -14,6 +16,26 @@ Package.resolved
 *.xcarchive
 *.ipa
 *.dSYM
+*.dSYM.zip
+ExportOptions-AppStore.plist
+*.mobileprovision
+*.provisionprofile
+*.p12
+*.p8
+*.cer
+*.pem
+
+# Local configuration and state
+*.xcconfig
+!*.xcconfig.example
+.env
+.env.*
+!.env.example
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+gym-data.json
 
 # Local screenshots and simulator captures
 /gymapp-*.png
@@ -21,3 +43,7 @@ Package.resolved
 
 # macOS
 .DS_Store
+
+# Agent review artifacts
+.charts/
+.lavish/

@@ -26,9 +26,6 @@
 		110000000000000000000015 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 110000000000000000000111 /* Assets.xcassets */; };
 		110000000000000000000016 /* exercemus-exercises.json in Resources */ = {isa = PBXBuildFile; fileRef = 110000000000000000000205 /* exercemus-exercises.json */; };
 		11000000000000000000000F /* plan.md in Resources */ = {isa = PBXBuildFile; fileRef = 110000000000000000000201 /* plan.md */; };
-		110000000000000000000010 /* 2026-04.md in Resources */ = {isa = PBXBuildFile; fileRef = 110000000000000000000202 /* 2026-04.md */; };
-		110000000000000000000011 /* 2026-05.md in Resources */ = {isa = PBXBuildFile; fileRef = 110000000000000000000203 /* 2026-05.md */; };
-		110000000000000000000012 /* 2026-06.md in Resources */ = {isa = PBXBuildFile; fileRef = 110000000000000000000204 /* 2026-06.md */; };
 		220000000000000000000001 /* SetEntryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000101 /* SetEntryTests.swift */; };
 		220000000000000000000002 /* WorkoutPlanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000102 /* WorkoutPlanTests.swift */; };
 /* End PBXBuildFile section */
@@ -64,9 +61,6 @@
 		110000000000000000000110 /* LogPreviousWorkoutSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogPreviousWorkoutSheet.swift; sourceTree = "<group>"; };
 		110000000000000000000111 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		110000000000000000000201 /* plan.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; name = plan.md; path = "workout-tracker/plan.md"; sourceTree = SOURCE_ROOT; };
-		110000000000000000000202 /* 2026-04.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; name = "2026-04.md"; path = "workout-tracker/logs/2026-04.md"; sourceTree = SOURCE_ROOT; };
-		110000000000000000000203 /* 2026-05.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; name = "2026-05.md"; path = "workout-tracker/logs/2026-05.md"; sourceTree = SOURCE_ROOT; };
-		110000000000000000000204 /* 2026-06.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; name = "2026-06.md"; path = "workout-tracker/logs/2026-06.md"; sourceTree = SOURCE_ROOT; };
 		110000000000000000000205 /* exercemus-exercises.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "GymApp/exercemus-exercises.json"; sourceTree = SOURCE_ROOT; };
 		220000000000000000000101 /* SetEntryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetEntryTests.swift; sourceTree = "<group>"; };
 		220000000000000000000102 /* WorkoutPlanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutPlanTests.swift; sourceTree = "<group>"; };
@@ -117,9 +111,6 @@
 			isa = PBXGroup;
 			children = (
 				110000000000000000000201 /* plan.md */,
-				110000000000000000000202 /* 2026-04.md */,
-				110000000000000000000203 /* 2026-05.md */,
-				110000000000000000000204 /* 2026-06.md */,
 				110000000000000000000205 /* exercemus-exercises.json */,
 			);
 			name = "Seed Resources";
@@ -268,9 +259,6 @@
 			files = (
 				11000000000000000000000F /* plan.md in Resources */,
 				110000000000000000000015 /* Assets.xcassets in Resources */,
-				110000000000000000000010 /* 2026-04.md in Resources */,
-				110000000000000000000011 /* 2026-05.md in Resources */,
-				110000000000000000000012 /* 2026-06.md in Resources */,
 				110000000000000000000016 /* exercemus-exercises.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -443,7 +431,6 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_ASSET_PATHS = "";
-				DEVELOPMENT_TEAM = JU7RZ24773;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Stacked;
@@ -476,7 +463,6 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_ASSET_PATHS = "";
-				DEVELOPMENT_TEAM = JU7RZ24773;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Stacked;
@@ -506,7 +492,6 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = JU7RZ24773;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.kevin.stacked.tests;
@@ -522,7 +507,6 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = JU7RZ24773;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.kevin.stacked.tests;
