@@ -243,12 +243,14 @@ final class WorkoutStore: ObservableObject {
         normalizeOccurrenceOrders(in: &data.weeklyPlans[planIndex])
     }
 
-    func createWorkout(_ template: WorkoutTemplate) {
+    func createWorkout(_ template: WorkoutTemplate, weeklyFrequency: Int = 1) {
         var template = template
         template.order = data.templates.count
         normalizeExerciseOrders(in: &template)
         data.templates.append(template)
-        addOccurrence(templateID: template.id)
+        for _ in 0..<max(1, weeklyFrequency) {
+            addOccurrence(templateID: template.id)
+        }
     }
 
     func updateWorkout(_ template: WorkoutTemplate) {
@@ -304,6 +306,18 @@ final class WorkoutStore: ObservableObject {
             occurrencesByTemplate[$0, default: []].sorted { $0.order < $1.order }
         }
         normalizeOccurrenceOrders(in: &data.weeklyPlans[planIndex])
+    }
+
+    func moveTemplateGroup(templateID: UUID, by offset: Int) {
+        let groups = weeklyTemplateGroups
+        guard let sourceIndex = groups.firstIndex(where: { $0.id == templateID }) else { return }
+        let destinationIndex = sourceIndex + offset
+        guard groups.indices.contains(destinationIndex) else { return }
+
+        moveTemplateGroups(
+            from: IndexSet(integer: sourceIndex),
+            to: destinationIndex > sourceIndex ? destinationIndex + 1 : destinationIndex
+        )
     }
 
     func saveWorkoutSession(_ session: WorkoutSession) {

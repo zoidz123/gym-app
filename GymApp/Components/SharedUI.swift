@@ -93,26 +93,49 @@ struct Pill: View {
 }
 
 struct EmptyStateView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let title: String
-    let message: String
+    let message: String?
     let systemImage: String
 
     var body: some View {
         VStack(spacing: 12) {
             Image(systemName: systemImage)
                 .font(.system(size: 36, weight: .semibold))
-                .foregroundStyle(AppTheme.textSecondary)
+                .foregroundStyle(AppTheme.ink)
 
             Text(title)
                 .font(.headline)
 
-            Text(message)
-                .font(.subheadline)
-                .foregroundStyle(AppTheme.textSecondary)
-                .multilineTextAlignment(.center)
+            if let message, !message.isEmpty {
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 48)
+        .padding(.vertical, dynamicTypeSize.isAccessibilitySize ? 24 : 48)
+    }
+}
+
+struct EmptyStateActionLabel: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                Text(title)
+            } else {
+                Label(title, systemImage: systemImage)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
     }
 }
 

@@ -2,10 +2,11 @@ import SwiftUI
 
 struct PlanView: View {
     @EnvironmentObject private var store: WorkoutStore
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var expandedTemplateIDs = Set<UUID>()
+    @State private var selectedTemplate: WorkoutTemplate?
     @State private var editingTemplate: WorkoutTemplate?
+    @State private var pendingEditingTemplate: WorkoutTemplate?
     @State private var removingGroup: WeeklyTemplateGroup?
+    @State private var pendingRemovingGroup: WeeklyTemplateGroup?
     @State private var confirmingCompletedDecrease: WeeklyTemplateGroup?
     @State private var isAddingWorkout = false
 
@@ -19,21 +20,24 @@ struct PlanView: View {
 
                 Section {
                     if store.weeklyTemplateGroups.isEmpty {
-                        PlanEmptyState {
-                            isAddingWorkout = true
-                        }
+                        PlanEmptyState(
+                            savedTemplates: unscheduledTemplates,
+                            addWorkout: { isAddingWorkout = true },
+                            addSavedWorkout: store.addOccurrence
+                        )
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                     } else {
                         ForEach(store.weeklyTemplateGroups) { group in
                             PlanTemplateRow(
                                 group: group,
-                                blocks: planBlocks(for: group.template),
-                                isExpanded: expandedTemplateIDs.contains(group.id),
-                                toggle: { toggle(group.id) },
+                                showDetails: { selectedTemplate = group.template },
                                 edit: { editingTemplate = group.template },
                                 increment: { store.addOccurrence(templateID: group.id) },
-                                decrement: { decreaseFrequency(for: group) },
+                                moveUp: { store.moveTemplateGroup(templateID: group.id, by: -1) },
+                                moveDown: { store.moveTemplateGroup(templateID: group.id, by: 1) },
+                                canMoveUp: group.id != store.weeklyTemplateGroups.first?.id,
+                                canMoveDown: group.id != store.weeklyTemplateGroups.last?.id,
                                 remove: { removingGroup = group }
                             )
                             .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 12))
@@ -43,17 +47,27 @@ struct PlanView: View {
                         .onMove(perform: store.moveTemplateGroups)
                     }
                 } header: {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("This Week")
-                            .font(.headline)
-                            .foregroundStyle(AppTheme.ink)
+                    if !store.weeklyTemplateGroups.isEmpty {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("This Week")
+                                .font(.headline)
+                                .foregroundStyle(AppTheme.ink)
 
-                        Text("Repeats every Monday with fresh checkmarks")
-                            .font(.caption)
-                            .foregroundStyle(AppTheme.textSecondary)
-                            .textCase(nil)
-                            .fixedSize(horizontal: false, vertical: true)
+                            Text("Your weekly workouts repeat every Monday. Each session gets its own checkmark.")
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.textSecondary)
+                                .textCase(nil)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
+                }
+
+                if !store.weeklyTemplateGroups.isEmpty {
+                    Color.clear
+                        .frame(height: 72)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .accessibilityHidden(true)
                 }
             }
             .listStyle(.plain)
@@ -61,11 +75,24 @@ struct PlanView: View {
             .background(AppTheme.screenBackground)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(item: $selectedTemplate, onDismiss: presentPendingDetailsAction) { template in
+                PlanTemplateDetailsSheet(
+                    templateID: template.id,
+                    blocks: planBlocks(for: template),
+                    edit: {
+                        pendingEditingTemplate = template
+                        selectedTemplate = nil
+                    },
+                    decrease: decreaseFrequency,
+                    remove: {
+                        pendingRemovingGroup = store.weeklyTemplateGroups.first { $0.id == template.id }
+                        selectedTemplate = nil
+                    }
+                )
+            }
             .sheet(isPresented: $isAddingWorkout) {
                 AddWorkoutSheet(
-                    templates: store.data.templates,
                     exerciseDefinitions: store.data.exerciseDefinitions,
-                    onAddExisting: store.addOccurrence,
                     onCreate: store.createWorkout
                 )
             }
@@ -84,7 +111,6 @@ struct PlanView: View {
             ) {
                 Button("Remove from This Week", role: .destructive) {
                     guard let removingGroup else { return }
-                    expandedTemplateIDs.remove(removingGroup.id)
                     store.removeTemplateFromWeek(templateID: removingGroup.id)
                     self.removingGroup = nil
                 }
@@ -118,28 +144,10 @@ struct PlanView: View {
         }
     }
 
-    @ViewBuilder
     private var planHeader: some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Plan")
-                    .font(.largeTitle.weight(.bold))
-                    .foregroundStyle(AppTheme.ink)
-
-                EditButton()
-
+        AppScreenHeader("Plan") {
+            if !store.weeklyTemplateGroups.isEmpty {
                 addWorkoutButton
-                    .frame(maxWidth: .infinity)
-            }
-            .padding(.horizontal)
-            .padding(.top, 8)
-            .padding(.bottom, 10)
-        } else {
-            AppScreenHeader("Plan") {
-                HStack(spacing: 10) {
-                    EditButton()
-                    addWorkoutButton
-                }
             }
         }
     }
@@ -149,11 +157,16 @@ struct PlanView: View {
             isAddingWorkout = true
         } label: {
             Label("Add Workout", systemImage: "plus")
-                .font(.subheadline.weight(.bold))
-                .lineLimit(1)
+                .font(.headline.weight(.bold))
+                .labelStyle(.iconOnly)
+                .frame(width: 44, height: 44)
         }
         .buttonStyle(.borderedProminent)
+        .buttonBorderShape(.circle)
         .tint(AppTheme.accent)
+        .contextMenu {
+            savedWorkoutActions
+        }
         .accessibilityIdentifier("plan-add-workout")
     }
 
@@ -179,18 +192,42 @@ struct PlanView: View {
         )
     }
 
-    private func toggle(_ id: UUID) {
-        if expandedTemplateIDs.contains(id) {
-            expandedTemplateIDs.remove(id)
-        } else {
-            expandedTemplateIDs.insert(id)
-        }
-    }
-
-    private func decreaseFrequency(for group: WeeklyTemplateGroup) {
+    private func decreaseFrequency(_ group: WeeklyTemplateGroup) {
         guard group.frequency > 1 else { return }
         if store.decreaseFrequency(templateID: group.id) == .requiresCompletedConfirmation {
             confirmingCompletedDecrease = group
+        }
+    }
+
+    private func presentPendingDetailsAction() {
+        if let pendingEditingTemplate {
+            editingTemplate = pendingEditingTemplate
+            self.pendingEditingTemplate = nil
+        } else if let pendingRemovingGroup {
+            removingGroup = pendingRemovingGroup
+            self.pendingRemovingGroup = nil
+        }
+    }
+
+    private var unscheduledTemplates: [WorkoutTemplate] {
+        let scheduledIDs = Set(store.weeklyTemplateGroups.map(\.id))
+        return store.data.templates
+            .filter { !scheduledIDs.contains($0.id) }
+            .sorted { $0.order < $1.order }
+    }
+
+    @ViewBuilder
+    private var savedWorkoutActions: some View {
+        if !unscheduledTemplates.isEmpty {
+            Section("Saved Workouts") {
+                ForEach(unscheduledTemplates) { template in
+                    Button {
+                        store.addOccurrence(templateID: template.id)
+                    } label: {
+                        Label("Add \(template.name) This Week", systemImage: "calendar.badge.plus")
+                    }
+                }
+            }
         }
     }
 
@@ -216,24 +253,38 @@ struct PlanView: View {
 }
 
 private struct PlanEmptyState: View {
+    let savedTemplates: [WorkoutTemplate]
     let addWorkout: () -> Void
+    let addSavedWorkout: (UUID) -> Void
 
     var body: some View {
         VStack(spacing: 16) {
             EmptyStateView(
-                title: "Plan Your Week",
-                message: "Add a workout day to choose your exercises and track it on Home.",
+                title: "No workouts yet",
+                message: "Add your first workout to plan the week.",
                 systemImage: "calendar.badge.plus"
             )
 
             Button(action: addWorkout) {
-                Label("Add Your First Workout", systemImage: "plus")
-                    .frame(maxWidth: .infinity)
+                EmptyStateActionLabel(title: "Add Workout", systemImage: "plus")
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .tint(AppTheme.accent)
             .padding(.horizontal)
+            .contextMenu {
+                if !savedTemplates.isEmpty {
+                    Section("Saved Workouts") {
+                        ForEach(savedTemplates) { template in
+                            Button {
+                                addSavedWorkout(template.id)
+                            } label: {
+                                Label("Add \(template.name) This Week", systemImage: "calendar.badge.plus")
+                            }
+                        }
+                    }
+                }
+            }
         }
         .padding(.bottom, 24)
     }
@@ -241,157 +292,253 @@ private struct PlanEmptyState: View {
 
 private struct PlanTemplateRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let group: WeeklyTemplateGroup
-    let blocks: [PlanBlock]
-    let isExpanded: Bool
-    let toggle: () -> Void
+    let showDetails: () -> Void
     let edit: () -> Void
     let increment: () -> Void
-    let decrement: () -> Void
+    let moveUp: () -> Void
+    let moveDown: () -> Void
+    let canMoveUp: Bool
+    let canMoveDown: Bool
     let remove: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if dynamicTypeSize.isAccessibilitySize {
+        Button(action: showDetails) {
+            HStack(spacing: 14) {
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 10) {
-                        templateDisclosure
-                        actionsMenu
-                    }
+                    Text(group.template.name)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(AppTheme.ink)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
 
-                    HStack {
-                        Text("Weekly frequency")
-                            .font(.caption)
-                            .foregroundStyle(AppTheme.textSecondary)
-                        Spacer()
-                        frequencyButtons
-                    }
+                    Text(scheduleSummary)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
                 }
-                .padding(.vertical, 8)
-            } else {
-                HStack(spacing: 12) {
-                    templateDisclosure
-                    frequencyButtons
-                    actionsMenu
-                }
-                .padding(.vertical, 7)
+
+                Spacer(minLength: 8)
+
+                frequencyMark
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppTheme.textSecondary)
+            }
+            .contentShape(Rectangle())
+            .padding(.vertical, 12)
+        }
+        .buttonStyle(.plain)
+        .contextMenu { managementActions }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive, action: remove) {
+                Label("Remove", systemImage: "trash")
             }
 
-            if isExpanded {
-                Divider()
+            Button(action: edit) {
+                Label("Edit", systemImage: "pencil")
+            }
+            .tint(AppTheme.accent)
+        }
+        .accessibilityLabel(accessibilitySummary)
+        .accessibilityHint("Opens weekly frequency and exercise details")
+        .accessibilityIdentifier("plan-template-\(group.id.uuidString)")
+    }
 
-                if blocks.isEmpty {
-                    Text("No exercises yet")
-                        .font(.subheadline)
-                        .foregroundStyle(AppTheme.textSecondary)
-                } else {
-                    VStack(spacing: 0) {
-                        ForEach(blocks) { block in
-                            switch block.kind {
-                            case .single(let exercise):
-                                PlanExerciseRow(exercise: exercise)
-                            case .superset(let exercises):
-                                VStack(alignment: .leading, spacing: 0) {
-                                    Label("Superset", systemImage: "link")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(AppTheme.textSecondary)
-                                        .padding(.top, 10)
-                                        .padding(.bottom, 4)
+    private var frequencyMark: some View {
+        Text("\(group.frequency)×")
+            .font(.subheadline.weight(.bold))
+            .monospacedDigit()
+            .foregroundStyle(AppTheme.ink)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(AppTheme.rowBackground)
+            .clipShape(Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(AppTheme.divider, lineWidth: 1)
+            }
+            .accessibilityHidden(true)
+    }
 
-                                    ForEach(exercises) { exercise in
-                                        PlanExerciseRow(exercise: exercise)
+    @ViewBuilder
+    private var managementActions: some View {
+        Button(action: edit) {
+            Label("Edit Workout", systemImage: "pencil")
+        }
+
+        Button(action: increment) {
+            Label("Add Another This Week", systemImage: "plus.square.on.square")
+        }
+
+        Divider()
+
+        Button(action: moveUp) {
+            Label("Move Up", systemImage: "arrow.up")
+        }
+        .disabled(!canMoveUp)
+
+        Button(action: moveDown) {
+            Label("Move Down", systemImage: "arrow.down")
+        }
+        .disabled(!canMoveDown)
+
+        Divider()
+
+        Button(role: .destructive, action: remove) {
+            Label("Remove from This Week", systemImage: "trash")
+        }
+    }
+
+    private var scheduleSummary: String {
+        let frequency = group.frequency == 1 ? "Once this week" : "\(group.frequency) times this week"
+        guard group.completedCount > 0 else { return frequency }
+        return "\(frequency) · \(group.completedCount) complete"
+    }
+
+    private var accessibilitySummary: String {
+        "\(group.template.name), \(group.frequency) \(group.frequency == 1 ? "time" : "times") this week, \(group.completedCount) complete"
+    }
+}
+
+private struct PlanTemplateDetailsSheet: View {
+    @EnvironmentObject private var store: WorkoutStore
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let templateID: UUID
+    let blocks: [PlanBlock]
+    let edit: () -> Void
+    let decrease: (WeeklyTemplateGroup) -> Void
+    let remove: () -> Void
+    @State private var editingExercise: TemplateExercise?
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if let group {
+                    Section {
+                        Stepper(value: frequency, in: 1...14) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Times per week")
+                                    .font(.body.weight(.semibold))
+                                Text("\(group.frequency) \(group.frequency == 1 ? "session" : "sessions") every week")
+                                    .font(.caption)
+                                    .foregroundStyle(AppTheme.textSecondary)
+                            }
+                        }
+                        .accessibilityIdentifier("plan-frequency-stepper")
+                    } footer: {
+                        Text("Each planned session has its own checkmark. Your plan repeats every Monday.")
+                            .textCase(nil)
+                    }
+
+                    Section("Exercises") {
+                        if blocks.isEmpty {
+                            Text("No exercises yet")
+                                .foregroundStyle(AppTheme.textSecondary)
+                        } else {
+                            ForEach(blocks) { block in
+                                switch block.kind {
+                                case .single(let exercise):
+                                    exerciseButton(exercise)
+                                case .superset(let exercises):
+                                    VStack(alignment: .leading, spacing: 0) {
+                                        Label("Superset", systemImage: "link")
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(AppTheme.textSecondary)
+                                            .padding(.bottom, 4)
+
+                                        ForEach(exercises) { exercise in
+                                            exerciseButton(exercise)
+                                        }
                                     }
-                                }
-                                .padding(.leading, 12)
-                                .overlay(alignment: .leading) {
-                                    Rectangle()
-                                        .fill(AppTheme.divider)
-                                        .frame(width: 1)
                                 }
                             }
                         }
                     }
-                    .transition(.opacity)
+
+                    Section {
+                        Button(action: edit) {
+                            Label("Edit Workout", systemImage: "pencil")
+                        }
+
+                        Button(role: .destructive, action: remove) {
+                            Label("Remove from This Week", systemImage: "trash")
+                        }
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(AppTheme.screenBackground)
+            .navigationTitle(group?.template.name ?? "Workout")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .buttonStyle(.borderedProminent)
+                        .tint(AppTheme.accent)
+                        .foregroundStyle(Color.white)
                 }
             }
         }
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: isExpanded)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("plan-template-\(group.id.uuidString)")
+        .presentationDetents(dynamicTypeSize.isAccessibilitySize ? [.large] : [.medium, .large])
+        .presentationDragIndicator(.visible)
+        .fullScreenCover(item: $editingExercise) { exercise in
+            PlanExerciseEditorScreen(
+                initialExercise: exercise,
+                exerciseDefinitions: store.data.exerciseDefinitions,
+                save: saveExercise
+            )
+        }
     }
 
-    private var templateDisclosure: some View {
-        Button(action: toggle) {
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(group.template.name)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(AppTheme.ink)
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+    private var group: WeeklyTemplateGroup? {
+        store.weeklyTemplateGroups.first { $0.id == templateID }
+    }
 
-                    Text("\(group.frequency)x this week")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(AppTheme.textSecondary)
-                        .lineLimit(1)
+    private var frequency: Binding<Int> {
+        Binding(
+            get: { group?.frequency ?? 1 },
+            set: { newValue in
+                guard let group else { return }
+                if newValue > group.frequency {
+                    store.addOccurrence(templateID: templateID)
+                } else if newValue < group.frequency {
+                    decrease(group)
                 }
+            }
+        )
+    }
 
-                Spacer(minLength: 4)
+    private func exerciseButton(_ exercise: TemplateExercise) -> some View {
+        Button {
+            editingExercise = exercise
+        } label: {
+            HStack(spacing: 8) {
+                PlanExerciseRow(exercise: exercise)
 
-                Image(systemName: "chevron.down")
+                Image(systemName: "chevron.right")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(AppTheme.textSecondary)
-                    .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                    .accessibilityHidden(true)
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Edit \(exercise.name)")
+        .accessibilityHint("Opens full-screen exercise details")
+        .accessibilityIdentifier("plan-exercise-\(exercise.id.uuidString)")
     }
 
-    private var frequencyButtons: some View {
-        HStack(spacing: 2) {
-            Button(action: decrement) {
-                Image(systemName: "minus")
-                    .frame(width: 44, height: 44)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(group.frequency > 1 ? AppTheme.accent : AppTheme.textTertiary)
-            .disabled(group.frequency <= 1)
-            .accessibilityLabel("Decrease \(group.template.name) frequency")
-
-            Button(action: increment) {
-                Image(systemName: "plus")
-                    .frame(width: 44, height: 44)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(AppTheme.accent)
-            .accessibilityLabel("Increase \(group.template.name) frequency")
+    private func saveExercise(_ exercise: TemplateExercise) {
+        guard var template = group?.template,
+              let exerciseIndex = template.exercises.firstIndex(where: { $0.id == exercise.id }) else {
+            return
         }
-        .font(.subheadline.weight(.bold))
-    }
 
-    private var actionsMenu: some View {
-        Menu {
-            Button(action: edit) {
-                Label("Edit Workout", systemImage: "pencil")
-            }
-
-            Button(action: increment) {
-                Label("Add Another This Week", systemImage: "plus.square.on.square")
-            }
-
-            Divider()
-
-            Button(role: .destructive, action: remove) {
-                Label("Remove from This Week", systemImage: "trash")
-            }
-        } label: {
-            Image(systemName: "ellipsis")
-                .font(.headline.weight(.bold))
-                .frame(width: 44, height: 44)
-        }
-        .foregroundStyle(AppTheme.accent)
-        .accessibilityLabel("Actions for \(group.template.name)")
+        template.exercises[exerciseIndex] = exercise
+        store.updateWorkout(template)
     }
 }
 
@@ -427,82 +574,425 @@ private struct PlanExerciseRow: View {
     }
 }
 
-struct AddWorkoutSheet: View {
+private struct PlanExerciseEditorScreen: View {
     @Environment(\.dismiss) private var dismiss
-    let templates: [WorkoutTemplate]
+    let initialExercise: TemplateExercise
     let exerciseDefinitions: [ExerciseDefinition]
-    let onAddExisting: (UUID) -> Void
-    let onCreate: (WorkoutTemplate) -> Void
+    let save: (TemplateExercise) -> Void
 
-    @State private var isCreatingWorkout = false
+    @State private var exercise: TemplateExercise
+    @State private var isConfirmingDiscard = false
+
+    init(
+        initialExercise: TemplateExercise,
+        exerciseDefinitions: [ExerciseDefinition],
+        save: @escaping (TemplateExercise) -> Void
+    ) {
+        self.initialExercise = initialExercise
+        self.exerciseDefinitions = exerciseDefinitions
+        self.save = save
+        _exercise = State(initialValue: initialExercise)
+    }
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    Button {
-                        isCreatingWorkout = true
-                    } label: {
-                        Label("Create New Workout", systemImage: "plus.circle.fill")
-                            .font(.headline)
-                    }
-                    .accessibilityIdentifier("create-new-workout")
+            Form {
+                ExerciseSearchField(
+                    title: "Exercise",
+                    placeholder: "Exercise name",
+                    text: $exercise.name,
+                    exerciseDefinitions: exerciseDefinitions
+                )
+
+                Section("Planned Sets") {
+                    Stepper("\(exercise.targetSetCount) sets", value: setCount, in: 1...10)
+                    TextField("Target reps", text: $exercise.targetRepsText)
+                        .textInputAutocapitalization(.never)
                 }
 
-                if !templates.isEmpty {
-                    Section("Add a Saved Workout") {
-                        ForEach(templates.sorted(by: { $0.order < $1.order })) { template in
-                            Button {
-                                onAddExisting(template.id)
-                                dismiss()
-                            } label: {
-                                HStack(spacing: 12) {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(template.name)
-                                            .font(.headline)
-                                            .foregroundStyle(AppTheme.ink)
-                                            .lineLimit(2)
-
-                                        Text("\(template.exercises.count) exercises")
-                                            .font(.subheadline)
-                                            .foregroundStyle(AppTheme.textSecondary)
-                                    }
-
-                                    Spacer()
-
-                                    Image(systemName: "plus.circle")
-                                        .foregroundStyle(AppTheme.accent)
-                                }
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
+                if exercise.supersetGroupId != nil {
+                    Section {
+                        Label("Part of a superset", systemImage: "link")
+                            .foregroundStyle(AppTheme.textSecondary)
+                    }
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(AppTheme.screenBackground)
+            .navigationTitle("Edit Exercise")
+            .navigationBarTitleDisplayMode(.inline)
+            .interactiveDismissDisabled(hasUnsavedChanges)
+            .accessibilityIdentifier("plan-exercise-editor")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        if hasUnsavedChanges {
+                            isConfirmingDiscard = true
+                        } else {
+                            dismiss()
                         }
+                    }
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        exercise.name = ExerciseSearch.canonicalName(
+                            for: exercise.name,
+                            in: exerciseDefinitions
+                        )
+                        exercise.targetRepsText = exercise.targetRepsText.trimmed
+                        save(exercise)
+                        dismiss()
+                    }
+                    .disabled(exercise.name.trimmed.isEmpty)
+                    .accessibilityIdentifier("save-exercise")
+                }
+            }
+            .confirmationDialog(
+                "Discard exercise changes?",
+                isPresented: $isConfirmingDiscard,
+                titleVisibility: .visible
+            ) {
+                Button("Discard Changes", role: .destructive) {
+                    dismiss()
+                }
+
+                Button("Keep Editing", role: .cancel) {}
+            }
+        }
+    }
+
+    private var hasUnsavedChanges: Bool {
+        exercise != initialExercise
+    }
+
+    private var setCount: Binding<Int> {
+        Binding(
+            get: { exercise.targetSetCount },
+            set: { newValue in
+                exercise.targetSetCount = newValue
+                exercise.targetSetsText = "\(newValue) sets"
+            }
+        )
+    }
+}
+
+struct AddWorkoutSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let exerciseDefinitions: [ExerciseDefinition]
+    let onCreate: (WorkoutTemplate, Int) -> Void
+
+    @State private var template = WorkoutTemplate(name: "", order: 0, exercises: [])
+    @State private var weeklyFrequency = 1
+    @State private var path: [WorkoutTemplateRoute] = []
+
+    var body: some View {
+        NavigationStack(path: $path) {
+            List {
+                Section("Workout") {
+                    TextField("Leg Day", text: $template.name)
+                        .textInputAutocapitalization(.words)
+                        .submitLabel(.done)
+                        .accessibilityLabel("Workout name")
+                        .accessibilityIdentifier("workout-name")
+                }
+
+                Section("Schedule") {
+                    Stepper(value: $weeklyFrequency, in: 1...14) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Times per week")
+                                .font(.body.weight(.semibold))
+
+                            Text("\(weeklyFrequency) \(weeklyFrequency == 1 ? "session" : "sessions") every week")
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.textSecondary)
+                        }
+                    }
+                    .accessibilityIdentifier("new-workout-frequency")
+                }
+
+                Section {
+                    if template.exercises.isEmpty {
+                        Text("No exercises yet")
+                            .foregroundStyle(AppTheme.textSecondary)
+                    } else {
+                        ForEach($template.exercises) { $exercise in
+                            PlanTemplateExerciseEditorRow(
+                                exercise: $exercise,
+                                setCount: setCountBinding(for: $exercise)
+                            )
+                        }
+                        .onMove(perform: moveExercises)
+                        .onDelete(perform: deleteExercises)
+                    }
+                } header: {
+                    HStack {
+                        Text("Exercises")
+                        Spacer()
+                        if template.exercises.count > 1 {
+                            EditButton()
+                                .textCase(nil)
+                        }
+                    }
+                } footer: {
+                    if template.exercises.isEmpty {
+                        Text("Add at least one exercise to save this workout.")
+                            .textCase(nil)
+                    }
+                }
+
+                Section {
+                    NavigationLink(value: WorkoutTemplateRoute.exercise) {
+                        Label("Add Exercise", systemImage: "plus")
+                    }
+
+                    NavigationLink(value: WorkoutTemplateRoute.superset) {
+                        Label("Add Superset", systemImage: "link.badge.plus")
                     }
                 }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(AppTheme.screenBackground)
-            .navigationTitle("Add Workout")
+            .navigationTitle("New Workout")
             .navigationBarTitleDisplayMode(.inline)
+            .interactiveDismissDisabled(hasDraftContent)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
+                    Button("Cancel") { dismiss() }
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }
+                        .disabled(!canSave)
+                        .accessibilityIdentifier("save-workout")
                 }
             }
-            .sheet(isPresented: $isCreatingWorkout) {
-                WorkoutTemplateEditorSheet(
-                    initialTemplate: WorkoutTemplate(name: "", order: templates.count, exercises: []),
-                    title: "New Workout",
-                    exerciseDefinitions: exerciseDefinitions
-                ) { template in
-                    onCreate(template)
-                    dismiss()
+            .navigationDestination(for: WorkoutTemplateRoute.self) { route in
+                switch route {
+                case .exercise:
+                    TemplateExerciseEntryView(
+                        exerciseDefinitions: exerciseDefinitions,
+                        cancel: returnToWorkout,
+                        add: addExercise
+                    )
+                case .superset:
+                    TemplateSupersetEntryView(
+                        exerciseDefinitions: exerciseDefinitions,
+                        cancel: returnToWorkout,
+                        add: addSuperset
+                    )
                 }
             }
         }
+    }
+
+    private var hasDraftContent: Bool {
+        !template.name.trimmed.isEmpty || !template.exercises.isEmpty || weeklyFrequency != 1
+    }
+
+    private var canSave: Bool {
+        !template.name.trimmed.isEmpty && !template.exercises.isEmpty
+    }
+
+    private func setCountBinding(for exercise: Binding<TemplateExercise>) -> Binding<Int> {
+        Binding(
+            get: { exercise.wrappedValue.targetSetCount },
+            set: { newValue in
+                exercise.wrappedValue.targetSetCount = newValue
+                exercise.wrappedValue.targetSetsText = "\(newValue) sets"
+            }
+        )
+    }
+
+    private func save() {
+        normalizeExerciseOrders()
+        template.name = template.name.trimmed
+        onCreate(template, weeklyFrequency)
+        dismiss()
+    }
+
+    private func addExercise(_ exercise: TemplateExercise) {
+        var exercise = exercise
+        exercise.order = template.exercises.count
+        template.exercises.append(exercise)
+        normalizeExerciseOrders()
+        returnToWorkout()
+    }
+
+    private func addSuperset(_ exercises: [TemplateExercise]) {
+        template.exercises.append(contentsOf: exercises)
+        normalizeExerciseOrders()
+        returnToWorkout()
+    }
+
+    private func returnToWorkout() {
+        guard !path.isEmpty else { return }
+        path.removeLast()
+    }
+
+    private func moveExercises(from source: IndexSet, to destination: Int) {
+        template.exercises.move(fromOffsets: source, toOffset: destination)
+        normalizeExerciseOrders()
+    }
+
+    private func deleteExercises(at offsets: IndexSet) {
+        let deletedGroupIDs = Set(offsets.compactMap { template.exercises[$0].supersetGroupId })
+        template.exercises.remove(atOffsets: offsets)
+
+        for groupID in deletedGroupIDs {
+            let remainingIndices = template.exercises.indices.filter {
+                template.exercises[$0].supersetGroupId == groupID
+            }
+            if remainingIndices.count == 1, let remainingIndex = remainingIndices.first {
+                template.exercises[remainingIndex].supersetGroupId = nil
+                template.exercises[remainingIndex].supersetName = nil
+            }
+        }
+
+        normalizeExerciseOrders()
+    }
+
+    private func normalizeExerciseOrders() {
+        for index in template.exercises.indices {
+            template.exercises[index].order = index
+        }
+    }
+}
+
+private enum WorkoutTemplateRoute: Hashable {
+    case exercise
+    case superset
+}
+
+private struct TemplateExerciseEntryView: View {
+    let exerciseDefinitions: [ExerciseDefinition]
+    let cancel: () -> Void
+    let add: (TemplateExercise) -> Void
+
+    @State private var name = ""
+    @State private var setCount = 3
+    @State private var targetReps = "8-12 reps"
+
+    var body: some View {
+        Form {
+            ExerciseSearchField(
+                title: "Exercise",
+                placeholder: "Exercise name",
+                text: $name,
+                exerciseDefinitions: exerciseDefinitions
+            )
+
+            Section("Planned Sets") {
+                Stepper("\(setCount) sets", value: $setCount, in: 1...10)
+                TextField("Target reps", text: $targetReps)
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(AppTheme.screenBackground)
+        .navigationTitle("Add Exercise")
+        .navigationBarBackButtonHidden(true)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel", action: cancel)
+            }
+
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Add", action: addExercise)
+                    .disabled(name.trimmed.isEmpty)
+            }
+        }
+    }
+
+    private func addExercise() {
+        add(
+            TemplateExercise(
+                name: ExerciseSearch.canonicalName(for: name, in: exerciseDefinitions),
+                order: 0,
+                targetSetsText: "\(setCount) sets",
+                targetRepsText: targetReps.trimmed,
+                targetSetCount: setCount,
+                supersetGroupId: nil,
+                supersetName: nil
+            )
+        )
+    }
+}
+
+private struct TemplateSupersetEntryView: View {
+    let exerciseDefinitions: [ExerciseDefinition]
+    let cancel: () -> Void
+    let add: ([TemplateExercise]) -> Void
+
+    @State private var firstName = ""
+    @State private var secondName = ""
+    @State private var setCount = 3
+    @State private var targetReps = "8-12 reps"
+
+    var body: some View {
+        Form {
+            ExerciseSearchField(
+                title: "First Exercise",
+                placeholder: "Exercise name",
+                text: $firstName,
+                exerciseDefinitions: exerciseDefinitions
+            )
+
+            ExerciseSearchField(
+                title: "Second Exercise",
+                placeholder: "Exercise name",
+                text: $secondName,
+                exerciseDefinitions: exerciseDefinitions
+            )
+
+            Section("Planned Sets") {
+                Stepper("\(setCount) sets", value: $setCount, in: 1...10)
+                TextField("Target reps", text: $targetReps)
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(AppTheme.screenBackground)
+        .navigationTitle("Add Superset")
+        .navigationBarBackButtonHidden(true)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel", action: cancel)
+            }
+
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Add", action: addSuperset)
+                    .disabled(!canAdd)
+            }
+        }
+    }
+
+    private var canAdd: Bool {
+        !firstName.trimmed.isEmpty &&
+            !secondName.trimmed.isEmpty &&
+            firstName.normalizedExerciseName != secondName.normalizedExerciseName
+    }
+
+    private func addSuperset() {
+        let first = ExerciseSearch.canonicalName(for: firstName, in: exerciseDefinitions)
+        let second = ExerciseSearch.canonicalName(for: secondName, in: exerciseDefinitions)
+        let groupID = UUID()
+        let groupName = "\(first) + \(second)"
+
+        add(
+            [first, second].enumerated().map { index, name in
+                TemplateExercise(
+                    name: name,
+                    order: index,
+                    targetSetsText: "\(setCount) sets",
+                    targetRepsText: targetReps.trimmed,
+                    targetSetCount: setCount,
+                    supersetGroupId: groupID,
+                    supersetName: groupName
+                )
+            }
+        )
     }
 }
 
@@ -513,8 +1003,7 @@ private struct WorkoutTemplateEditorSheet: View {
     let onSave: (WorkoutTemplate) -> Void
 
     @State private var template: WorkoutTemplate
-    @State private var isAddingExercise = false
-    @State private var isAddingSuperset = false
+    @State private var path: [WorkoutTemplateRoute] = []
 
     init(
         initialTemplate: WorkoutTemplate,
@@ -529,7 +1018,7 @@ private struct WorkoutTemplateEditorSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 Section("Workout") {
                     TextField("Workout name", text: $template.name)
@@ -555,15 +1044,11 @@ private struct WorkoutTemplateEditorSheet: View {
                 }
 
                 Section {
-                    Button {
-                        isAddingExercise = true
-                    } label: {
+                    NavigationLink(value: WorkoutTemplateRoute.exercise) {
                         Label("Add Exercise", systemImage: "plus")
                     }
 
-                    Button {
-                        isAddingSuperset = true
-                    } label: {
+                    NavigationLink(value: WorkoutTemplateRoute.superset) {
                         Label("Add Superset", systemImage: "link.badge.plus")
                     }
                 }
@@ -594,17 +1079,21 @@ private struct WorkoutTemplateEditorSheet: View {
                     .accessibilityIdentifier("save-workout")
                 }
             }
-            .sheet(isPresented: $isAddingExercise) {
-                TemplateExerciseSheet(
-                    exerciseDefinitions: exerciseDefinitions,
-                    onAdd: addExercise
-                )
-            }
-            .sheet(isPresented: $isAddingSuperset) {
-                TemplateSupersetSheet(
-                    exerciseDefinitions: exerciseDefinitions,
-                    onAdd: addSuperset
-                )
+            .navigationDestination(for: WorkoutTemplateRoute.self) { route in
+                switch route {
+                case .exercise:
+                    TemplateExerciseEntryView(
+                        exerciseDefinitions: exerciseDefinitions,
+                        cancel: returnToWorkout,
+                        add: addExercise
+                    )
+                case .superset:
+                    TemplateSupersetEntryView(
+                        exerciseDefinitions: exerciseDefinitions,
+                        cancel: returnToWorkout,
+                        add: addSuperset
+                    )
+                }
             }
             .onAppear {
                 template.exercises.sort { $0.order < $1.order }
@@ -628,11 +1117,18 @@ private struct WorkoutTemplateEditorSheet: View {
         exercise.order = template.exercises.count
         template.exercises.append(exercise)
         normalizeExerciseOrders()
+        returnToWorkout()
     }
 
     private func addSuperset(_ exercises: [TemplateExercise]) {
         template.exercises.append(contentsOf: exercises)
         normalizeExerciseOrders()
+        returnToWorkout()
+    }
+
+    private func returnToWorkout() {
+        guard !path.isEmpty else { return }
+        path.removeLast()
     }
 
     private func moveExercises(from source: IndexSet, to destination: Int) {
@@ -690,142 +1186,6 @@ private struct PlanTemplateExerciseEditorRow: View {
             .foregroundStyle(AppTheme.textSecondary)
         }
         .padding(.vertical, 4)
-    }
-}
-
-private struct TemplateExerciseSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    let exerciseDefinitions: [ExerciseDefinition]
-    let onAdd: (TemplateExercise) -> Void
-
-    @State private var name = ""
-    @State private var setCount = 3
-    @State private var targetReps = "8-12 reps"
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                ExerciseSearchField(
-                    title: "Exercise",
-                    placeholder: "Exercise name",
-                    text: $name,
-                    exerciseDefinitions: exerciseDefinitions
-                )
-
-                Section("Planned Sets") {
-                    Stepper("\(setCount) sets", value: $setCount, in: 1...10)
-                    TextField("Target reps", text: $targetReps)
-                }
-            }
-            .scrollContentBackground(.hidden)
-            .background(AppTheme.screenBackground)
-            .navigationTitle("Add Exercise")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
-                        onAdd(
-                            TemplateExercise(
-                                name: ExerciseSearch.canonicalName(for: name, in: exerciseDefinitions),
-                                order: 0,
-                                targetSetsText: "\(setCount) sets",
-                                targetRepsText: targetReps.trimmed,
-                                targetSetCount: setCount,
-                                supersetGroupId: nil,
-                                supersetName: nil
-                            )
-                        )
-                        dismiss()
-                    }
-                    .disabled(name.trimmed.isEmpty)
-                }
-            }
-        }
-    }
-}
-
-private struct TemplateSupersetSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    let exerciseDefinitions: [ExerciseDefinition]
-    let onAdd: ([TemplateExercise]) -> Void
-
-    @State private var firstName = ""
-    @State private var secondName = ""
-    @State private var setCount = 3
-    @State private var targetReps = "8-12 reps"
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                ExerciseSearchField(
-                    title: "First Exercise",
-                    placeholder: "Exercise name",
-                    text: $firstName,
-                    exerciseDefinitions: exerciseDefinitions
-                )
-
-                ExerciseSearchField(
-                    title: "Second Exercise",
-                    placeholder: "Exercise name",
-                    text: $secondName,
-                    exerciseDefinitions: exerciseDefinitions
-                )
-
-                Section("Planned Sets") {
-                    Stepper("\(setCount) sets", value: $setCount, in: 1...10)
-                    TextField("Target reps", text: $targetReps)
-                }
-            }
-            .scrollContentBackground(.hidden)
-            .background(AppTheme.screenBackground)
-            .navigationTitle("Add Superset")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
-                        addSuperset()
-                    }
-                    .disabled(!canAdd)
-                }
-            }
-        }
-    }
-
-    private var canAdd: Bool {
-        !firstName.trimmed.isEmpty &&
-            !secondName.trimmed.isEmpty &&
-            firstName.normalizedExerciseName != secondName.normalizedExerciseName
-    }
-
-    private func addSuperset() {
-        let first = ExerciseSearch.canonicalName(for: firstName, in: exerciseDefinitions)
-        let second = ExerciseSearch.canonicalName(for: secondName, in: exerciseDefinitions)
-        let groupID = UUID()
-        let groupName = "\(first) + \(second)"
-        let names = [first, second]
-
-        onAdd(
-            names.enumerated().map { index, name in
-                TemplateExercise(
-                    name: name,
-                    order: index,
-                    targetSetsText: "\(setCount) sets",
-                    targetRepsText: targetReps.trimmed,
-                    targetSetCount: setCount,
-                    supersetGroupId: groupID,
-                    supersetName: groupName
-                )
-            }
-        )
-        dismiss()
     }
 }
 

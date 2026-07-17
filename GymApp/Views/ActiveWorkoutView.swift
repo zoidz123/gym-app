@@ -37,24 +37,33 @@ struct ActiveWorkoutView: View {
                     Button {
                         isAddingExercise = true
                     } label: {
-                        Text("Add Exercise")
+                        Label("Add Exercise", systemImage: "plus")
                             .font(.headline)
+                            .foregroundStyle(AppTheme.screenBackground)
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
                     .tint(AppTheme.ink)
+                    .accessibilityIdentifier("active-add-exercise")
 
                     Button {
                         isAddingSuperset = true
                     } label: {
-                        Text("Add Superset")
+                        Label("Add Superset", systemImage: "link.badge.plus")
                             .font(.headline)
+                            .foregroundStyle(AppTheme.accent)
                             .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(AppTheme.screenBackground, in: Capsule())
+                            .overlay {
+                                Capsule()
+                                    .stroke(AppTheme.accent, lineWidth: 1.5)
+                            }
+                            .contentShape(Capsule())
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
-                    .tint(AppTheme.accent)
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("active-add-superset")
                 }
                 .padding(.top, 16)
                 .id("actions")
@@ -69,20 +78,23 @@ struct ActiveWorkoutView: View {
                     isConfirmingDiscard = true
                 } label: {
                     Image(systemName: "xmark")
+                        .foregroundStyle(Color.red)
                 }
                 .accessibilityLabel("Discard workout")
+                .accessibilityIdentifier("discard-workout")
             }
 
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     finishWorkout()
                 } label: {
-                    Image(systemName: "checkmark.circle.fill")
+                    Image(systemName: session.exercises.isEmpty ? "checkmark.circle" : "checkmark.circle.fill")
                         .font(.title2.weight(.semibold))
-                        .foregroundStyle(AppTheme.success)
+                        .foregroundStyle(session.exercises.isEmpty ? AppTheme.textTertiary : AppTheme.success)
                 }
                 .disabled(session.exercises.isEmpty)
                 .accessibilityLabel(finishAccessibilityLabel)
+                .accessibilityIdentifier("finish-workout")
             }
         }
         .sheet(isPresented: $isAddingExercise) {
