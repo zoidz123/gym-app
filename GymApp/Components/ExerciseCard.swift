@@ -67,29 +67,22 @@ struct ExerciseLoggingContent: View {
                 }
             }
             .padding(.vertical, 2)
-            .background(AppTheme.rowBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
-            HStack(spacing: 10) {
-                Button {
-                    exercise.addBlankSet()
-                } label: {
-                    Label("Add Set", systemImage: "plus")
-                        .font(.subheadline.weight(.bold))
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .tint(AppTheme.accent)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    addSetButton
 
-                if exercise.sets.count > 1 {
-                    Button(role: .destructive) {
-                        removeLastSet()
-                    } label: {
-                        Label("Remove", systemImage: "minus")
-                            .font(.subheadline.weight(.bold))
-                            .frame(maxWidth: .infinity)
+                    if exercise.sets.count > 1 {
+                        removeSetButton
                     }
-                    .buttonStyle(.bordered)
+                }
+
+                VStack(spacing: 2) {
+                    addSetButton
+
+                    if exercise.sets.count > 1 {
+                        removeSetButton
+                    }
                 }
             }
         }
@@ -108,6 +101,32 @@ struct ExerciseLoggingContent: View {
         for index in exercise.sets.indices {
             exercise.sets[index].order = index + 1
         }
+    }
+
+    private var addSetButton: some View {
+        Button {
+            exercise.addBlankSet()
+        } label: {
+            Label("Add Set", systemImage: "plus")
+                .font(.subheadline.weight(.bold))
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(AppTheme.accent)
+        .frame(minHeight: 44)
+    }
+
+    private var removeSetButton: some View {
+        Button(role: .destructive) {
+            removeLastSet()
+        } label: {
+            Label("Remove", systemImage: "minus")
+                .font(.subheadline.weight(.bold))
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(AppTheme.textSecondary)
+        .frame(minHeight: 44)
     }
 
     private var prefersLoad: Bool {

@@ -5,8 +5,7 @@ struct GymAppRootView: View {
 
     init() {
         let appearance = UITabBarAppearance()
-        appearance.configureWithOpaqueBackground()
-        appearance.backgroundColor = UIColor(AppTheme.surface)
+        appearance.configureWithDefaultBackground()
         appearance.shadowColor = UIColor(AppTheme.divider)
 
         let selectedColor = UIColor(AppTheme.accent)

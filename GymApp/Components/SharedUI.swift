@@ -1,33 +1,30 @@
 import SwiftUI
 
 enum AppTheme {
-    static let accent = Color(red: 1.0, green: 0.22, blue: 0.36)
-    static let accentSoft = Color(.systemPink).opacity(0.14)
-    static let success = Color(red: 0.05, green: 0.55, blue: 0.32)
-    static let successSoft = Color(.systemGreen).opacity(0.12)
+    static let accent = Color("AccentColor")
+    static let accentSoft = Color("AccentColor").opacity(0.14)
+    static let success = Color("AccentColor")
+    static let successSoft = Color("AccentColor").opacity(0.1)
     static let ink = Color.primary
     static let textSecondary = Color.secondary
     static let textTertiary = Color(.tertiaryLabel)
-    static let screenBackground = Color(.systemGroupedBackground)
-    static let surface = Color(.secondarySystemGroupedBackground)
-    static let rowBackground = Color(.tertiarySystemGroupedBackground)
-    static let chipBackground = Color(.secondarySystemGroupedBackground)
-    static let chipBorder = Color(.separator).opacity(0.55)
-    static let divider = Color(.separator).opacity(0.65)
+    static let screenBackground = Color(.systemBackground)
+    static let surface = Color(.systemBackground)
+    static let rowBackground = Color(.secondarySystemBackground)
+    static let chipBackground = Color.clear
+    static let chipBorder = Color(.separator)
+    static let divider = Color(.separator)
 }
 
 struct AppCard<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             content
         }
-        .padding(18)
+        .padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppTheme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .shadow(color: Color.black.opacity(0.06), radius: 18, x: 0, y: 8)
     }
 }
 
@@ -81,10 +78,10 @@ struct Pill: View {
                 Image(systemName: systemImage)
             }
         }
-        .font(.caption.weight(.semibold))
+        .font(.caption.weight(.medium))
         .lineLimit(1)
         .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.vertical, 5)
         .foregroundStyle(AppTheme.ink)
         .background(AppTheme.chipBackground)
         .clipShape(Capsule())

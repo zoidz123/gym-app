@@ -37,7 +37,7 @@ struct PlanView: View {
                                 remove: { removingGroup = group }
                             )
                             .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 12))
-                            .listRowBackground(AppTheme.surface)
+                            .listRowBackground(AppTheme.screenBackground)
                             .listRowSeparatorTint(AppTheme.divider)
                         }
                         .onMove(perform: store.moveTemplateGroups)
@@ -241,6 +241,7 @@ private struct PlanEmptyState: View {
 
 private struct PlanTemplateRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let group: WeeklyTemplateGroup
     let blocks: [PlanBlock]
     let isExpanded: Bool
@@ -285,30 +286,37 @@ private struct PlanTemplateRow: View {
                         .font(.subheadline)
                         .foregroundStyle(AppTheme.textSecondary)
                 } else {
-                    VStack(spacing: 10) {
+                    VStack(spacing: 0) {
                         ForEach(blocks) { block in
                             switch block.kind {
                             case .single(let exercise):
                                 PlanExerciseRow(exercise: exercise)
                             case .superset(let exercises):
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Pill("Superset", systemImage: "link")
+                                VStack(alignment: .leading, spacing: 0) {
+                                    Label("Superset", systemImage: "link")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(AppTheme.textSecondary)
+                                        .padding(.top, 10)
+                                        .padding(.bottom, 4)
 
                                     ForEach(exercises) { exercise in
                                         PlanExerciseRow(exercise: exercise)
                                     }
                                 }
-                                .padding(12)
-                                .background(AppTheme.accentSoft.opacity(0.65))
-                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .padding(.leading, 12)
+                                .overlay(alignment: .leading) {
+                                    Rectangle()
+                                        .fill(AppTheme.divider)
+                                        .frame(width: 1)
+                                }
                             }
                         }
                     }
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity)
                 }
             }
         }
-        .animation(.snappy, value: isExpanded)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: isExpanded)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("plan-template-\(group.id.uuidString)")
     }
@@ -344,7 +352,7 @@ private struct PlanTemplateRow: View {
         HStack(spacing: 2) {
             Button(action: decrement) {
                 Image(systemName: "minus")
-                    .frame(width: 32, height: 32)
+                    .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
             .foregroundStyle(group.frequency > 1 ? AppTheme.accent : AppTheme.textTertiary)
@@ -353,7 +361,7 @@ private struct PlanTemplateRow: View {
 
             Button(action: increment) {
                 Image(systemName: "plus")
-                    .frame(width: 32, height: 32)
+                    .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
             .foregroundStyle(AppTheme.accent)
@@ -380,7 +388,7 @@ private struct PlanTemplateRow: View {
         } label: {
             Image(systemName: "ellipsis")
                 .font(.headline.weight(.bold))
-                .frame(width: 32, height: 32)
+                .frame(width: 44, height: 44)
         }
         .foregroundStyle(AppTheme.accent)
         .accessibilityLabel("Actions for \(group.template.name)")
@@ -396,9 +404,7 @@ private struct PlanExerciseRow: View {
                 .font(.caption.weight(.bold))
                 .monospacedDigit()
                 .foregroundStyle(AppTheme.textSecondary)
-                .frame(width: 24, height: 24)
-                .background(AppTheme.surface)
-                .clipShape(Circle())
+                .frame(width: 24, alignment: .trailing)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(exercise.name)
@@ -414,9 +420,10 @@ private struct PlanExerciseRow: View {
 
             Spacer(minLength: 0)
         }
-        .padding(12)
-        .background(AppTheme.rowBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .padding(.vertical, 10)
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
     }
 }
 
@@ -473,6 +480,9 @@ private struct AddWorkoutSheet: View {
                     }
                 }
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(AppTheme.screenBackground)
             .navigationTitle("Add Workout")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -558,6 +568,9 @@ private struct WorkoutTemplateEditorSheet: View {
                     }
                 }
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(AppTheme.screenBackground)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .interactiveDismissDisabled(template.name.trimmed.isEmpty == false || template.exercises.isEmpty == false)
@@ -704,6 +717,8 @@ private struct TemplateExerciseSheet: View {
                     TextField("Target reps", text: $targetReps)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(AppTheme.screenBackground)
             .navigationTitle("Add Exercise")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -765,6 +780,8 @@ private struct TemplateSupersetSheet: View {
                     TextField("Target reps", text: $targetReps)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(AppTheme.screenBackground)
             .navigationTitle("Add Superset")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
