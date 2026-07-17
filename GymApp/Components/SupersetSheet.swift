@@ -39,6 +39,8 @@ struct SupersetSheet: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(AppTheme.screenBackground)
             .navigationTitle("Add Superset")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

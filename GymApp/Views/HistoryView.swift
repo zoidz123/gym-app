@@ -40,24 +40,9 @@ struct HistoryView: View {
                                     )
                                 }
                             } label: {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(session.workoutName)
-                                        .font(.headline)
-                                        .foregroundStyle(AppTheme.ink)
-
-                                    Text(session.date.workoutWeekdayDate)
-                                        .font(.subheadline)
-                                        .foregroundStyle(AppTheme.textSecondary)
-
-                                    HStack(spacing: 8) {
-                                        Pill("\(session.exercises.count) exercises", systemImage: "dumbbell")
-                                        Pill("\(session.totalSetCount) sets", systemImage: "checkmark.circle")
-                                    }
-                                    .padding(.top, 2)
-                                }
-                                .padding(.vertical, 4)
+                                HistorySessionRow(session: session)
                             }
-                            .listRowSeparator(.hidden)
+                            .listRowSeparatorTint(AppTheme.divider)
                         }
                     }
                     .listStyle(.plain)
@@ -91,7 +76,7 @@ struct HistoryDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 0) {
                 AppCard {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(session.date.workoutWeekdayDate)
@@ -122,7 +107,7 @@ struct HistoryDetailView: View {
                     }
                 }
 
-                ForEach(historyBlocks) { block in
+                ForEach(Array(historyBlocks.enumerated()), id: \.element.id) { index, block in
                     switch block.kind {
                     case .single(let exercise):
                         HistoryExerciseRow(exercise: binding(for: exercise.id))
@@ -140,9 +125,13 @@ struct HistoryDetailView: View {
                             }
                         }
                     }
+
+                    if index < historyBlocks.count - 1 {
+                        Divider()
+                    }
                 }
             }
-            .padding()
+            .padding(.horizontal)
         }
         .background(AppTheme.screenBackground)
         .navigationTitle(session.workoutName)
@@ -276,9 +265,7 @@ private struct HistoryExerciseTable: View {
                     }
                 }
             }
-            .padding(12)
-            .background(AppTheme.rowBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .padding(.vertical, 8)
         }
     }
 }
@@ -323,6 +310,7 @@ private struct HistorySetRow: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
+        .frame(minHeight: 44)
         .sheet(isPresented: $isEditingWeight) {
             SetWeightSheet(set: $set)
                 .presentationDetents([.medium, .large])
@@ -345,6 +333,51 @@ private struct HistorySetRow: View {
         }
 
         return "-"
+    }
+}
+
+private struct HistorySessionRow: View {
+    let session: WorkoutSession
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                titleAndDate
+                Spacer(minLength: 8)
+                totals
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                titleAndDate
+                totals
+            }
+        }
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var titleAndDate: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(session.workoutName)
+                .font(.headline)
+                .foregroundStyle(AppTheme.ink)
+                .lineLimit(2)
+
+            Text(session.date.workoutWeekdayDate)
+                .font(.subheadline)
+                .foregroundStyle(AppTheme.textSecondary)
+        }
+    }
+
+    private var totals: some View {
+        VStack(alignment: .trailing, spacing: 3) {
+            Text("\(session.exercises.count) EXERCISES")
+            Text("\(session.totalSetCount) SETS")
+        }
+        .font(.caption.weight(.semibold))
+        .monospacedDigit()
+        .foregroundStyle(AppTheme.textSecondary)
+        .frame(minWidth: 88, alignment: .trailing)
     }
 }
 

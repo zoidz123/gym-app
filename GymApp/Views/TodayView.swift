@@ -15,20 +15,8 @@ struct TodayView: View {
             }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar(store.data.activeSession == nil ? .hidden : .visible, for: .navigationBar)
             .toolbar(store.data.activeSession == nil ? .visible : .hidden, for: .tabBar)
-            .toolbar {
-                if store.data.activeSession == nil {
-                    ToolbarItem(placement: .topBarLeading) {
-                        NavigationLink {
-                            CalendarView()
-                        } label: {
-                            Image(systemName: "calendar")
-                                .font(.headline.weight(.semibold))
-                        }
-                        .accessibilityLabel("Calendar")
-                    }
-                }
-            }
             .background(AppTheme.screenBackground)
             .sheet(item: $previousWorkoutSelection) { status in
                 LogPreviousWorkoutSheet(
@@ -42,12 +30,32 @@ struct TodayView: View {
 
     private var workoutStartView: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                NavigationLink {
+                    CalendarView()
+                } label: {
+                    HStack(spacing: 14) {
+                        Image(systemName: "calendar")
+                            .font(.headline.weight(.semibold))
+                            .foregroundStyle(AppTheme.accent)
+                            .frame(width: 44, height: 44)
+
+                        Text(Date().workoutLongDate)
+                            .font(.subheadline)
+                            .foregroundStyle(AppTheme.textSecondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Calendar, \(Date().workoutLongDate)")
+
                 WeeklyProgressCard(
                     statuses: store.weeklyWorkoutStatuses,
                     groups: store.weeklyTemplateGroups,
                     onLogPrevious: openPreviousWorkoutLogger
                 )
+
+                Divider()
 
                 if let suggested = store.nextUnloggedWeeklyStatus?.template ?? store.suggestedTemplate {
                     AppCard {
@@ -90,53 +98,81 @@ struct TodayView: View {
                             .padding(.top, 6)
                         }
                     }
+
+                    Divider()
                 }
 
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 0) {
                     Text("Change workout")
                         .font(.headline)
-                        .foregroundStyle(AppTheme.ink)
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .padding(.vertical, 14)
 
-                    ForEach(store.data.templates) { template in
+                    ForEach(Array(store.data.templates.enumerated()), id: \.element.id) { index, template in
                         Button {
                             store.startWorkout(from: template)
                         } label: {
-                            HStack(spacing: 12) {
-                                VStack(alignment: .leading, spacing: 5) {
+                            ViewThatFits(in: .horizontal) {
+                                HStack(spacing: 8) {
+                                    Text(template.name)
+                                        .font(.headline)
+                                        .foregroundStyle(AppTheme.ink)
+                                        .lineLimit(1)
+
+                                    Spacer(minLength: 4)
+
+                                    HStack(spacing: 6) {
+                                        templateMeta(template)
+                                    }
+
+                                    Image(systemName: "chevron.right")
+                                        .font(.footnote.weight(.semibold))
+                                        .foregroundStyle(AppTheme.textTertiary)
+                                }
+
+                                VStack(alignment: .leading, spacing: 6) {
                                     Text(template.name)
                                         .font(.headline)
                                         .foregroundStyle(AppTheme.ink)
 
-                                    templateMetaRow(for: template)
+                                    HStack(spacing: 6) {
+                                        templateMeta(template)
+                                    }
                                 }
-
-                                Spacer()
-
-                                Image(systemName: "chevron.right")
-                                    .font(.footnote.weight(.semibold))
-                                    .foregroundStyle(AppTheme.textTertiary)
                             }
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .padding(14)
-                        .background(AppTheme.surface)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        .shadow(color: Color.black.opacity(0.05), radius: 14, x: 0, y: 6)
+                        .padding(.vertical, 13)
+
+                        if index < store.data.templates.count - 1 {
+                            Divider()
+                        }
                     }
                 }
             }
-            .padding()
+            .padding(.horizontal)
         }
     }
 
     private func templateMetaRow(for template: WorkoutTemplate) -> some View {
-        HStack(spacing: 8) {
-            Pill("\(template.exercises.count) exercises", systemImage: "dumbbell")
-
-            if template.supersetCount > 0 {
-                Pill("\(template.supersetCount) supersets", systemImage: "link")
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                templateMeta(template)
             }
+
+            VStack(alignment: .leading, spacing: 6) {
+                templateMeta(template)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func templateMeta(_ template: WorkoutTemplate) -> some View {
+        Pill("\(template.exercises.count) exercises", systemImage: "dumbbell")
+
+        if template.supersetCount > 0 {
+            Pill("\(template.supersetCount) supersets", systemImage: "link")
         }
     }
 
@@ -191,8 +227,10 @@ private struct WeeklyProgressCard: View {
             .foregroundStyle(loggedCount == statuses.count ? AppTheme.success : AppTheme.ink)
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
-            .background(loggedCount == statuses.count ? AppTheme.successSoft : AppTheme.screenBackground)
-            .clipShape(Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(AppTheme.divider, lineWidth: 1)
+            }
     }
 
 }
@@ -204,7 +242,7 @@ private struct WeeklyTemplateProgressRow: View {
     var body: some View {
         HStack(spacing: 10) {
             Text(group.template.name)
-                .font(.subheadline.weight(.semibold))
+                .font(.body.weight(.semibold))
                 .foregroundStyle(AppTheme.ink)
                 .lineLimit(1)
 
@@ -232,7 +270,7 @@ private struct WeeklyTemplateProgressRow: View {
             .scrollIndicators(.hidden)
             .fixedSize(horizontal: true, vertical: false)
         }
-        .padding(.vertical, 5)
+        .padding(.vertical, 6)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("weekly-template-\(group.template.id.uuidString)")
     }

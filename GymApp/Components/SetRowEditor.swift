@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 
 struct SetRowEditor: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var set: LoggedSet
     let metric: SetMetricDescriptor
     let prefersLoad: Bool
@@ -13,6 +14,12 @@ struct SetRowEditor: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
+            Image(systemName: set.isCompleted ? "checkmark.circle.fill" : "circle")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(set.isCompleted ? AppTheme.success : AppTheme.textTertiary)
+                .frame(width: 18)
+                .accessibilityHidden(true)
+
             if showsLoad {
                 loadEditor
             } else {
@@ -24,9 +31,9 @@ struct SetRowEditor: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
         .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
-        .background(set.isCompleted ? AppTheme.successSoft : Color.clear)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(set.isCompleted ? AppTheme.rowBackground.opacity(0.55) : Color.clear)
+        .contentShape(Rectangle())
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: set.isCompleted)
         .onAppear(perform: synchronizeDrafts)
         .onChange(of: set.loadValue) {
             guard !isEditingLoad else { return }
@@ -191,13 +198,13 @@ struct SetRowEditor: View {
     ) -> some View {
         content()
             .background {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(isFocused ? AppTheme.accentSoft : AppTheme.surface.opacity(0.82))
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(isFocused ? AppTheme.accentSoft : Color(.quaternarySystemFill))
                     .frame(height: 38)
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .stroke(isFocused ? AppTheme.accent : AppTheme.chipBorder, lineWidth: isFocused ? 1.5 : 1)
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .stroke(isFocused ? AppTheme.accent : Color.clear, lineWidth: isFocused ? 1.5 : 0)
                     .frame(height: 38)
             }
     }
@@ -211,9 +218,6 @@ struct SetRowEditor: View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.caption.weight(.bold))
-                .frame(width: 28, height: 28)
-                .background(AppTheme.surface.opacity(0.72))
-                .clipShape(Circle())
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }

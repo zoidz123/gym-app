@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 struct ActiveWorkoutView: View {
     @EnvironmentObject private var store: WorkoutStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var session: WorkoutSession
     var finishAccessibilityLabel = "Finish workout"
     var discardConfirmationTitle = "Discard this workout?"
@@ -18,12 +19,18 @@ struct ActiveWorkoutView: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 16) {
+            LazyVStack(alignment: .leading, spacing: 0) {
                 headerCard
                     .id("header")
 
-                ForEach(workoutBlocks) { block in
+                Divider()
+
+                ForEach(Array(workoutBlocks.enumerated()), id: \.element.id) { index, block in
                     workoutBlockView(block)
+
+                    if index < workoutBlocks.count - 1 {
+                        Divider()
+                    }
                 }
 
                 HStack(spacing: 12) {
@@ -49,9 +56,10 @@ struct ActiveWorkoutView: View {
                     .controlSize(.large)
                     .tint(AppTheme.accent)
                 }
+                .padding(.top, 16)
                 .id("actions")
             }
-            .padding()
+            .padding(.horizontal)
         }
         .scrollDismissesKeyboard(.interactively)
         .background(AppTheme.screenBackground)
@@ -123,7 +131,12 @@ struct ActiveWorkoutView: View {
 
                 TextField("Optional bodyweight", text: $session.bodyweight)
                     .keyboardType(.decimalPad)
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(.plain)
+                    .padding(.vertical, 10)
+                    .frame(minHeight: 44)
+                    .overlay(alignment: .bottom) {
+                        Divider()
+                    }
             }
         }
     }
@@ -207,14 +220,8 @@ struct ActiveWorkoutView: View {
         Image(systemName: "line.3.horizontal")
             .font(.callout.weight(.bold))
             .foregroundStyle(AppTheme.textSecondary)
-            .frame(width: 38, height: 38)
-            .background(AppTheme.surface.opacity(0.96))
-            .clipShape(Capsule())
-            .overlay {
-                Capsule()
-                    .stroke(AppTheme.chipBorder, lineWidth: 1)
-            }
-            .contentShape(Capsule())
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
             .onDrag {
                 draggedBlockId = block.id
                 return NSItemProvider(object: block.id as NSString)
@@ -301,7 +308,7 @@ struct ActiveWorkoutView: View {
             return
         }
 
-        withAnimation(.snappy) {
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
             let draggedBlock = blocks.remove(at: sourceIndex)
             let destinationIndex = sourceIndex < targetIndex ? targetIndex : targetIndex
             blocks.insert(draggedBlock, at: destinationIndex)

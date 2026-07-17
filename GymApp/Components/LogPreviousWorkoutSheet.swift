@@ -93,6 +93,8 @@ struct LogPreviousWorkoutSheet: View {
                 .listRowBackground(Color.clear)
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(AppTheme.screenBackground)
         .navigationTitle("Log Previous")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {

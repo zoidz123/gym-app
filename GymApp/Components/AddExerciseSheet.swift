@@ -32,6 +32,8 @@ struct AddExerciseSheet: View {
                 }
 
             }
+            .scrollContentBackground(.hidden)
+            .background(AppTheme.screenBackground)
             .navigationTitle("Add Exercise")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
