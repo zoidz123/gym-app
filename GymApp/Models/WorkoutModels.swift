@@ -288,6 +288,7 @@ struct WorkoutSession: Identifiable, Codable, Equatable {
     var isSeededHistory: Bool
     var plannedOccurrenceID: UUID? = nil
     var exercises: [LoggedExercise]
+    var restTimer: WorkoutRestTimer? = nil
 
     var completedSetCount: Int {
         exercises.flatMap(\.sets).filter(\.isCompleted).count
@@ -295,6 +296,57 @@ struct WorkoutSession: Identifiable, Codable, Equatable {
 
     var totalSetCount: Int {
         exercises.flatMap(\.sets).count
+    }
+}
+
+struct WorkoutRestTimer: Codable, Equatable {
+    static let defaultDurationSeconds = 90
+
+    var durationSeconds: Int
+    private(set) var endDate: Date?
+    private(set) var pausedRemainingSeconds: Int?
+
+    init(
+        durationSeconds: Int = defaultDurationSeconds,
+        startedAt: Date = Date()
+    ) {
+        self.durationSeconds = durationSeconds
+        endDate = startedAt.addingTimeInterval(TimeInterval(durationSeconds))
+        pausedRemainingSeconds = nil
+    }
+
+    var isPaused: Bool {
+        endDate == nil && pausedRemainingSeconds != nil
+    }
+
+    func remainingSeconds(at date: Date) -> Int {
+        if let pausedRemainingSeconds {
+            return pausedRemainingSeconds
+        }
+
+        guard let endDate else { return 0 }
+        return max(0, Int(ceil(endDate.timeIntervalSince(date))))
+    }
+
+    func isComplete(at date: Date) -> Bool {
+        remainingSeconds(at: date) == 0
+    }
+
+    mutating func pause(at date: Date) {
+        let remaining = remainingSeconds(at: date)
+        endDate = nil
+        pausedRemainingSeconds = remaining
+    }
+
+    mutating func resume(at date: Date) {
+        guard let pausedRemainingSeconds, pausedRemainingSeconds > 0 else { return }
+        endDate = date.addingTimeInterval(TimeInterval(pausedRemainingSeconds))
+        self.pausedRemainingSeconds = nil
+    }
+
+    mutating func restart(at date: Date) {
+        endDate = date.addingTimeInterval(TimeInterval(durationSeconds))
+        pausedRemainingSeconds = nil
     }
 }
 
