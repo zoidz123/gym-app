@@ -26,6 +26,10 @@ struct ActiveWorkoutView: View {
 
                 Divider()
 
+                restTimerSection
+
+                Divider()
+
                 ForEach(Array(workoutBlocks.enumerated()), id: \.element.id) { index, block in
                     workoutBlockView(block)
 
@@ -98,6 +102,112 @@ struct ActiveWorkoutView: View {
             }
 
             Button("Cancel", role: .cancel) {}
+        }
+        .onChange(of: completedSetIDs) { previousIDs, completedIDs in
+            let newlyCompletedIDs = completedIDs.subtracting(previousIDs)
+            guard !newlyCompletedIDs.isEmpty else { return }
+
+            if session.completedSetCount < session.totalSetCount {
+                startRestTimer()
+            } else {
+                session.restTimer = nil
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var restTimerSection: some View {
+        if let timer = session.restTimer {
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                restTimerContent(timer: timer, date: context.date)
+            }
+        } else {
+            Button(action: startRestTimer) {
+                Label("Start 1:30 Rest", systemImage: "timer")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(AppTheme.accent)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("start-rest-timer")
+        }
+    }
+
+    private func restTimerContent(timer: WorkoutRestTimer, date: Date) -> some View {
+        let remainingSeconds = timer.remainingSeconds(at: date)
+        let isComplete = timer.isComplete(at: date)
+
+        return Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 12) {
+                    restTimerStatus(remainingSeconds: remainingSeconds, isComplete: isComplete)
+                    restTimerControls(timer: timer, date: date, isComplete: isComplete)
+                }
+            } else {
+                HStack(spacing: 12) {
+                    restTimerStatus(remainingSeconds: remainingSeconds, isComplete: isComplete)
+                    Spacer(minLength: 8)
+                    restTimerControls(timer: timer, date: date, isComplete: isComplete)
+                }
+            }
+        }
+        .padding(.vertical, 10)
+        .sensoryFeedback(.success, trigger: isComplete)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("rest-timer")
+    }
+
+    private func restTimerStatus(remainingSeconds: Int, isComplete: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(isComplete ? "Rest complete" : "Rest")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(isComplete ? AppTheme.success : AppTheme.textSecondary)
+
+            Text(formattedRestTime(remainingSeconds))
+                .font(.system(.title2, design: .rounded).weight(.bold))
+                .monospacedDigit()
+                .foregroundStyle(AppTheme.ink)
+                .contentTransition(.numericText())
+                .accessibilityLabel(isComplete ? "Rest complete" : "\(remainingSeconds) seconds remaining")
+        }
+    }
+
+    private func restTimerControls(
+        timer: WorkoutRestTimer,
+        date: Date,
+        isComplete: Bool
+    ) -> some View {
+        HStack(spacing: 8) {
+            Button {
+                if isComplete {
+                    restartRestTimer(at: date)
+                } else if timer.isPaused {
+                    resumeRestTimer(at: date)
+                } else {
+                    pauseRestTimer(at: date)
+                }
+            } label: {
+                Image(systemName: isComplete ? "arrow.counterclockwise" : (timer.isPaused ? "play.fill" : "pause.fill"))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(AppTheme.accent)
+            .accessibilityLabel(isComplete ? "Restart rest timer" : (timer.isPaused ? "Resume rest timer" : "Pause rest timer"))
+            .accessibilityIdentifier("rest-timer-primary-control")
+
+            Button {
+                session.restTimer = nil
+            } label: {
+                Text(isComplete ? "Done" : "Skip")
+                    .font(.subheadline.weight(.bold))
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(AppTheme.textSecondary)
+            .accessibilityLabel(isComplete ? "Dismiss rest timer" : "Skip rest timer")
+            .accessibilityIdentifier("skip-rest-timer")
         }
     }
 
@@ -293,6 +403,35 @@ struct ActiveWorkoutView: View {
         return blocks
     }
 
+    private var completedSetIDs: Set<UUID> {
+        Set(
+            session.exercises
+                .flatMap(\.sets)
+                .filter(\.isCompleted)
+                .map(\.id)
+        )
+    }
+
+    private func startRestTimer() {
+        session.restTimer = WorkoutRestTimer()
+    }
+
+    private func pauseRestTimer(at date: Date) {
+        session.restTimer?.pause(at: date)
+    }
+
+    private func resumeRestTimer(at date: Date) {
+        session.restTimer?.resume(at: date)
+    }
+
+    private func restartRestTimer(at date: Date) {
+        session.restTimer?.restart(at: date)
+    }
+
+    private func formattedRestTime(_ seconds: Int) -> String {
+        String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+
     private func binding(for exerciseId: UUID) -> Binding<LoggedExercise> {
         Binding(
             get: {
@@ -359,6 +498,8 @@ struct ActiveWorkoutView: View {
     }
 
     private func finishWorkout() {
+        session.restTimer = nil
+
         if let onFinish {
             onFinish()
         } else {

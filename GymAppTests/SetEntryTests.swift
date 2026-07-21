@@ -116,6 +116,67 @@ final class SetEntryTests: XCTestCase {
         XCTAssertFalse(SetEntryLayout.supportsLoad(units: [.custom]))
     }
 
+    func testRestTimerUsesDeadlineAndPreservesPausedTime() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var timer = WorkoutRestTimer(durationSeconds: 90, startedAt: start)
+
+        XCTAssertEqual(timer.remainingSeconds(at: start), 90)
+        XCTAssertEqual(timer.remainingSeconds(at: start.addingTimeInterval(30.2)), 60)
+
+        timer.pause(at: start.addingTimeInterval(40))
+        XCTAssertTrue(timer.isPaused)
+        XCTAssertEqual(timer.remainingSeconds(at: start.addingTimeInterval(80)), 50)
+
+        timer.resume(at: start.addingTimeInterval(100))
+        XCTAssertFalse(timer.isPaused)
+        XCTAssertEqual(timer.remainingSeconds(at: start.addingTimeInterval(125)), 25)
+        XCTAssertTrue(timer.isComplete(at: start.addingTimeInterval(150)))
+    }
+
+    func testRestTimerPersistsWithActiveWorkoutSession() throws {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var session = makeSession(
+            date: start,
+            exercise: makeLoggedExercise(
+                templateExerciseId: UUID(),
+                name: "Flat Chest Press",
+                reps: 10,
+                load: 135
+            )
+        )
+        session.restTimer = WorkoutRestTimer(durationSeconds: 90, startedAt: start)
+
+        let decoded = try JSONDecoder().decode(
+            WorkoutSession.self,
+            from: JSONEncoder().encode(session)
+        )
+
+        XCTAssertEqual(decoded.restTimer?.remainingSeconds(at: start.addingTimeInterval(45)), 45)
+    }
+
+    func testWorkoutSessionWithoutRestTimerStillDecodes() throws {
+        let session = makeSession(
+            date: Date(timeIntervalSince1970: 1_000),
+            exercise: makeLoggedExercise(
+                templateExerciseId: UUID(),
+                name: "Flat Chest Press",
+                reps: 10,
+                load: 135
+            )
+        )
+        var encodedObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(session)) as? [String: Any]
+        )
+        encodedObject.removeValue(forKey: "restTimer")
+
+        let decoded = try JSONDecoder().decode(
+            WorkoutSession.self,
+            from: JSONSerialization.data(withJSONObject: encodedObject)
+        )
+
+        XCTAssertNil(decoded.restTimer)
+    }
+
     private func makeTemplateExercise(name: String) -> TemplateExercise {
         TemplateExercise(
             name: name,
