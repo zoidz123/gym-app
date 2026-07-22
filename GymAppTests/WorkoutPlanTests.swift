@@ -600,6 +600,71 @@ final class WorkoutPlanTests: XCTestCase {
         XCTAssertEqual(store?.weeklyWorkoutStatuses.filter(\.isLogged).count, 2)
     }
 
+    func testElapsedTimeUsesStartDateWithoutAccumulatingTicks() throws {
+        let startedAt = try dateTime("2026-07-16T12:00:00Z")
+
+        XCTAssertEqual(
+            WorkoutElapsedTime.clockText(
+                from: startedAt,
+                to: try dateTime("2026-07-16T13:00:23Z")
+            ),
+            "01:00:23"
+        )
+        XCTAssertEqual(
+            WorkoutElapsedTime.clockText(
+                from: startedAt,
+                to: try dateTime("2026-07-16T11:59:00Z")
+            ),
+            "00:00"
+        )
+    }
+
+    func testActiveWorkoutStartTimePersistsAcrossStoreRestoration() throws {
+        let startedAt = try dateTime("2026-07-16T12:00:00Z")
+        let restoredAt = try dateTime("2026-07-16T12:07:31Z")
+        let push = template(name: "Push", order: 0)
+        let url = try writeData(appData(templates: [push]))
+
+        var store: WorkoutStore? = WorkoutStore(
+            saveURL: url,
+            now: { startedAt },
+            calendar: testCalendar
+        )
+        store?.startWorkout(from: push)
+        XCTAssertEqual(store?.data.activeSession?.startedAt, startedAt)
+        store = nil
+
+        let restoredStore = WorkoutStore(
+            saveURL: url,
+            now: { restoredAt },
+            calendar: testCalendar
+        )
+        let restoredSession = try XCTUnwrap(restoredStore.data.activeSession)
+        XCTAssertEqual(restoredSession.startedAt, startedAt)
+        XCTAssertEqual(
+            WorkoutElapsedTime.clockText(
+                from: restoredSession.workoutStartedAt,
+                to: restoredAt
+            ),
+            "07:31"
+        )
+    }
+
+    func testCompletingActiveWorkoutSavesDurationFromPersistedStartTime() throws {
+        var currentDate = try dateTime("2026-07-16T12:00:00Z")
+        let push = template(name: "Push", order: 0)
+        let store = try makeStore(data: appData(templates: [push]), now: { currentDate })
+        store.startWorkout(from: push)
+
+        currentDate = try dateTime("2026-07-16T13:05:42Z")
+        store.completeActiveWorkout()
+
+        XCTAssertNil(store.data.activeSession)
+        XCTAssertEqual(store.data.history.first?.date, currentDate)
+        XCTAssertEqual(store.data.history.first?.startedAt, try dateTime("2026-07-16T12:00:00Z"))
+        XCTAssertEqual(store.data.history.first?.duration, "1 hr 5 min")
+    }
+
     func testExistingExplicitLinksSurviveMigrationAndNormalizationWithoutMutation() throws {
         let thursday = try date("2026-07-16")
         let zone2 = template(name: "Zone 2 Cardio", order: 0)

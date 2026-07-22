@@ -148,6 +148,22 @@ struct ActiveWorkoutView: View {
                         Text(session.date.workoutLongDate)
                             .font(.subheadline)
                             .foregroundStyle(AppTheme.textSecondary)
+
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            Label(
+                                WorkoutElapsedTime.clockText(
+                                    from: session.workoutStartedAt,
+                                    to: context.date
+                                ),
+                                systemImage: "timer"
+                            )
+                            .font(.system(.title3, design: .monospaced).weight(.semibold))
+                            .foregroundStyle(AppTheme.accent)
+                            .accessibilityLabel(
+                                "Elapsed workout time, \(WorkoutElapsedTime.clockText(from: session.workoutStartedAt, to: context.date))"
+                            )
+                            .accessibilityIdentifier("workout-elapsed-time")
+                        }
                     }
 
                     Spacer()

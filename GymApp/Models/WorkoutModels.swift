@@ -281,6 +281,7 @@ enum ExerciseSearch {
 struct WorkoutSession: Identifiable, Codable, Equatable {
     var id = UUID()
     var date: Date
+    var startedAt: Date? = nil
     var workoutName: String
     var bodyweight: String
     var duration: String
@@ -295,6 +296,45 @@ struct WorkoutSession: Identifiable, Codable, Equatable {
 
     var totalSetCount: Int {
         exercises.flatMap(\.sets).count
+    }
+
+    var workoutStartedAt: Date {
+        startedAt ?? date
+    }
+}
+
+enum WorkoutElapsedTime {
+    static func seconds(from startedAt: Date, to currentDate: Date) -> Int {
+        max(0, Int(currentDate.timeIntervalSince(startedAt)))
+    }
+
+    static func clockText(from startedAt: Date, to currentDate: Date) -> String {
+        let totalSeconds = seconds(from: startedAt, to: currentDate)
+        let hours = totalSeconds / 3_600
+        let minutes = (totalSeconds % 3_600) / 60
+        let seconds = totalSeconds % 60
+
+        if hours > 0 {
+            return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
+        }
+
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    static func historyText(from startedAt: Date, to completedAt: Date) -> String {
+        let totalMinutes = seconds(from: startedAt, to: completedAt) / 60
+        let hours = totalMinutes / 60
+        let minutes = totalMinutes % 60
+
+        if hours > 0, minutes > 0 {
+            return "\(hours) hr \(minutes) min"
+        }
+
+        if hours > 0 {
+            return "\(hours) hr"
+        }
+
+        return totalMinutes > 0 ? "\(totalMinutes) min" : "< 1 min"
     }
 }
 

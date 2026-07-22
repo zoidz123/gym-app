@@ -101,6 +101,10 @@ struct HistoryDetailView: View {
                             Pill("\(session.totalSetCount) sets", systemImage: "checkmark.circle")
                         }
 
+                        if !session.duration.isEmpty {
+                            Pill(session.duration, systemImage: "timer")
+                        }
+
                         if !session.bodyweight.isEmpty {
                             Divider()
                             LabeledContent("Bodyweight", value: session.bodyweight)

@@ -348,7 +348,12 @@ final class WorkoutStore: ObservableObject {
 
     func completeActiveWorkout() {
         guard var session = data.activeSession else { return }
-        session.date = now()
+        let completedAt = now()
+        session.duration = WorkoutElapsedTime.historyText(
+            from: session.workoutStartedAt,
+            to: completedAt
+        )
+        session.date = completedAt
         session.isSeededHistory = false
         data.history.insert(session, at: 0)
         data.activeSession = nil
@@ -358,6 +363,7 @@ final class WorkoutStore: ObservableObject {
         from template: WorkoutTemplate,
         plannedOccurrenceID: UUID?
     ) -> WorkoutSession {
+        let startedAt = now()
         let exercises = template.exercises.map { templateExercise -> LoggedExercise in
             let lastLogged = WorkoutHistoryDefaults.latestLoggedExercise(
                 matching: templateExercise,
@@ -383,7 +389,8 @@ final class WorkoutStore: ObservableObject {
         }
 
         return WorkoutSession(
-            date: now(),
+            date: startedAt,
+            startedAt: startedAt,
             workoutName: template.name,
             bodyweight: "",
             duration: "",
