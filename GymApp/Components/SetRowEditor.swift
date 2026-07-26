@@ -34,6 +34,12 @@ struct SetRowEditor: View {
         .background(set.isCompleted ? AppTheme.rowBackground.opacity(0.55) : Color.clear)
         .contentShape(Rectangle())
         .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: set.isCompleted)
+        .sensoryFeedback(.success, trigger: set.isCompleted) { oldValue, newValue in
+            SetCompletionFeedback.shouldTrigger(
+                previouslyCompleted: oldValue,
+                isCompleted: newValue
+            )
+        }
         .onAppear(perform: synchronizeDrafts)
         .onChange(of: set.loadValue) {
             guard !isEditingLoad else { return }
@@ -310,6 +316,12 @@ struct SetMetricDescriptor {
         }
 
         return SetMetricDescriptor(title: "Reps", target: "target \(targetRepsText)", unitLabel: "reps")
+    }
+}
+
+enum SetCompletionFeedback {
+    static func shouldTrigger(previouslyCompleted: Bool, isCompleted: Bool) -> Bool {
+        !previouslyCompleted && isCompleted
     }
 }
 
