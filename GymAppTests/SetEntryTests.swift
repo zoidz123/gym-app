@@ -2,6 +2,33 @@ import XCTest
 @testable import Stacked
 
 final class SetEntryTests: XCTestCase {
+    func testSetCompletionFeedbackOnlyTriggersWhenASetBecomesCompleted() {
+        XCTAssertTrue(
+            SetCompletionFeedback.shouldTrigger(
+                previouslyCompleted: false,
+                isCompleted: true
+            )
+        )
+        XCTAssertFalse(
+            SetCompletionFeedback.shouldTrigger(
+                previouslyCompleted: false,
+                isCompleted: false
+            )
+        )
+        XCTAssertFalse(
+            SetCompletionFeedback.shouldTrigger(
+                previouslyCompleted: true,
+                isCompleted: false
+            )
+        )
+        XCTAssertFalse(
+            SetCompletionFeedback.shouldTrigger(
+                previouslyCompleted: true,
+                isCompleted: true
+            )
+        )
+    }
+
     func testHistoryDefaultsUseStableExerciseIdentityAndMostRecentRelevantSession() {
         let templateExercise = makeTemplateExercise(name: "Incline DB Press")
         let identityMatch = makeLoggedExercise(
