@@ -9,6 +9,7 @@ struct AddExerciseSheet: View {
     @State private var setCount = 3
     @State private var targetReps = "8-12 reps"
     @State private var unit: LoadUnit = .lb
+    @State private var selectedMuscleGroup: ExerciseMuscleGroup = .all
 
     var body: some View {
         NavigationStack {
@@ -17,7 +18,8 @@ struct AddExerciseSheet: View {
                     title: "Exercise",
                     placeholder: "Exercise name",
                     text: $name,
-                    exerciseDefinitions: exerciseDefinitions
+                    exerciseDefinitions: exerciseDefinitions,
+                    selectedMuscleGroup: $selectedMuscleGroup
                 )
 
                 Section("Planned Sets") {
@@ -80,10 +82,54 @@ struct ExerciseSearchField: View {
     let placeholder: String
     @Binding var text: String
     let exerciseDefinitions: [ExerciseDefinition]
+    private let selectedMuscleGroup: Binding<ExerciseMuscleGroup>?
+
+    init(
+        title: String,
+        placeholder: String,
+        text: Binding<String>,
+        exerciseDefinitions: [ExerciseDefinition],
+        selectedMuscleGroup: Binding<ExerciseMuscleGroup>? = nil
+    ) {
+        self.title = title
+        self.placeholder = placeholder
+        _text = text
+        self.exerciseDefinitions = exerciseDefinitions
+        self.selectedMuscleGroup = selectedMuscleGroup
+    }
 
     var body: some View {
         Section(title) {
             TextField(placeholder, text: $text)
+
+            if let selectedMuscleGroup {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(ExerciseMuscleGroup.allCases) { muscleGroup in
+                            Button(muscleGroup.title) {
+                                selectedMuscleGroup.wrappedValue = muscleGroup
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .tint(
+                                selectedMuscleGroup.wrappedValue == muscleGroup
+                                    ? AppTheme.accent
+                                    : AppTheme.textSecondary
+                            )
+                            .accessibilityValue(
+                                selectedMuscleGroup.wrappedValue == muscleGroup
+                                    ? "Selected"
+                                    : "Not selected"
+                            )
+                            .accessibilityAddTraits(
+                                selectedMuscleGroup.wrappedValue == muscleGroup ? .isSelected : []
+                            )
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+                .accessibilityLabel("Filter exercises by muscle group")
+            }
 
             if !suggestions.isEmpty {
                 VStack(spacing: 0) {
@@ -125,6 +171,10 @@ struct ExerciseSearchField: View {
     }
 
     private var suggestions: [ExerciseDefinition] {
-        ExerciseSearch.rankedDefinitions(exerciseDefinitions, matching: text)
+        ExerciseSearch.rankedDefinitions(
+            exerciseDefinitions,
+            matching: text,
+            muscleGroup: selectedMuscleGroup?.wrappedValue ?? .all
+        )
     }
 }
