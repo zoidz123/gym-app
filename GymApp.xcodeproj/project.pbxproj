@@ -27,6 +27,7 @@
 		110000000000000000000016 /* exercemus-exercises.json in Resources */ = {isa = PBXBuildFile; fileRef = 110000000000000000000205 /* exercemus-exercises.json */; };
 		220000000000000000000001 /* SetEntryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000101 /* SetEntryTests.swift */; };
 		220000000000000000000002 /* WorkoutPlanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000102 /* WorkoutPlanTests.swift */; };
+		220000000000000000000003 /* ExerciseSearchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000103 /* ExerciseSearchTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -62,6 +63,7 @@
 		110000000000000000000205 /* exercemus-exercises.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "GymApp/exercemus-exercises.json"; sourceTree = SOURCE_ROOT; };
 		220000000000000000000101 /* SetEntryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetEntryTests.swift; sourceTree = "<group>"; };
 		220000000000000000000102 /* WorkoutPlanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutPlanTests.swift; sourceTree = "<group>"; };
+		220000000000000000000103 /* ExerciseSearchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseSearchTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -170,6 +172,7 @@
 			children = (
 				220000000000000000000101 /* SetEntryTests.swift */,
 				220000000000000000000102 /* WorkoutPlanTests.swift */,
+				220000000000000000000103 /* ExerciseSearchTests.swift */,
 			);
 			path = GymAppTests;
 			sourceTree = "<group>";
@@ -291,6 +294,7 @@
 			files = (
 				220000000000000000000001 /* SetEntryTests.swift in Sources */,
 				220000000000000000000002 /* WorkoutPlanTests.swift in Sources */,
+				220000000000000000000003 /* ExerciseSearchTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

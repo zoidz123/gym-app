@@ -219,12 +219,61 @@ struct ExerciseDefinition: Identifiable, Codable, Equatable {
     }
 }
 
+enum ExerciseMuscleGroup: String, CaseIterable, Identifiable {
+    case all
+    case chest
+    case back
+    case shoulders
+    case arms
+    case legs
+    case core
+
+    var id: String { rawValue }
+
+    var title: String {
+        rawValue.capitalized
+    }
+
+    func matches(_ definition: ExerciseDefinition) -> Bool {
+        guard self != .all else { return true }
+
+        let primaryMuscles = Set(definition.primaryMuscles.map(\.normalizedExerciseName))
+        return !primaryMuscles.isDisjoint(with: muscleNames)
+    }
+
+    private var muscleNames: Set<String> {
+        switch self {
+        case .all:
+            []
+        case .chest:
+            ["chest"]
+        case .back:
+            ["lats", "middle back", "lower back", "traps"]
+        case .shoulders:
+            ["shoulders"]
+        case .arms:
+            ["biceps", "triceps", "forearms", "brachialis"]
+        case .legs:
+            ["quads", "hamstrings", "glutes", "calves", "adductors", "abductors"]
+        case .core:
+            ["abs"]
+        }
+    }
+}
+
 enum ExerciseSearch {
-    static func rankedDefinitions(_ definitions: [ExerciseDefinition], matching rawQuery: String) -> [ExerciseDefinition] {
+    static func rankedDefinitions(
+        _ definitions: [ExerciseDefinition],
+        matching rawQuery: String,
+        muscleGroup: ExerciseMuscleGroup = .all
+    ) -> [ExerciseDefinition] {
         let query = rawQuery.normalizedExerciseName
 
         guard !query.isEmpty else {
-            return Array(definitions.prefix(12))
+            return definitions
+                .filter(muscleGroup.matches)
+                .prefix(12)
+                .map { $0 }
         }
 
         let queryTokens = query.components(separatedBy: " ").filter { !$0.isEmpty }
@@ -263,6 +312,7 @@ enum ExerciseSearch {
                 return left.0.name.localizedStandardCompare(right.0.name) == .orderedAscending
             }
             .map(\.0)
+            .filter(muscleGroup.matches)
     }
 
     static func canonicalName(for rawName: String, in definitions: [ExerciseDefinition]) -> String {
