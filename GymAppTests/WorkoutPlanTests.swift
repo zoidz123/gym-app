@@ -131,6 +131,24 @@ final class WorkoutPlanTests: XCTestCase {
         XCTAssertEqual(store.weeklyWorkoutStatuses.first?.loggedSession?.id, completedSession.id)
     }
 
+    func testExportContainsAllStoredData() throws {
+        let monday = try date("2026-07-13")
+        let workout = template(name: "Push", order: 0)
+        let store = try makeStore(
+            data: appData(templates: [workout], history: [session(name: "Push", date: monday)]),
+            now: { monday }
+        )
+        store.addOccurrence(templateID: workout.id)
+
+        let export = store.export
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let exportedData = try decoder.decode(GymAppData.self, from: export.encoded())
+
+        XCTAssertEqual(exportedData, store.data)
+        XCTAssertEqual(export.fileName, "Stacked-export-2026-07-13.json")
+    }
+
     func testAppBundleHasExerciseCatalogWithoutLegacyPlanResource() {
         XCTAssertNotNil(Bundle.main.url(forResource: "exercemus-exercises", withExtension: "json"))
         XCTAssertNil(Bundle.main.url(forResource: "plan", withExtension: "md"))

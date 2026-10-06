@@ -8,15 +8,24 @@ struct HistoryView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 AppScreenHeader("History") {
-                    if !store.data.history.isEmpty {
-                        Button {
-                            isLoggingPreviousWorkout = true
-                        } label: {
-                            Image(systemName: "plus")
+                    HStack(spacing: 0) {
+                        ShareLink(item: store.export, preview: SharePreview("Stacked data")) {
+                            Image(systemName: "square.and.arrow.up")
                                 .font(.headline.weight(.semibold))
                                 .frame(width: 44, height: 44)
                         }
-                        .accessibilityLabel("Log previous workout")
+                        .accessibilityLabel("Export data")
+
+                        if !store.data.history.isEmpty {
+                            Button {
+                                isLoggingPreviousWorkout = true
+                            } label: {
+                                Image(systemName: "plus")
+                                    .font(.headline.weight(.semibold))
+                                    .frame(width: 44, height: 44)
+                            }
+                            .accessibilityLabel("Log previous workout")
+                        }
                     }
                 }
 
