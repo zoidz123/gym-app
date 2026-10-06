@@ -1,5 +1,7 @@
 import Combine
+import CoreTransferable
 import Foundation
+import UniformTypeIdentifiers
 
 @MainActor
 final class WorkoutStore: ObservableObject {
@@ -394,6 +396,9 @@ final class WorkoutStore: ObservableObject {
         )
     }
 
+    var export: GymDataExport {
+        GymDataExport(data: data, date: now())
+    }
 }
 
 enum WorkoutHistoryDefaults {
@@ -825,6 +830,27 @@ enum FrequencyDecreaseResult: Equatable {
     case requiresCompletedConfirmation
     case removedCompleted
     case notFound
+}
+
+struct GymDataExport: Transferable {
+    let data: GymAppData
+    let date: Date
+
+    var fileName: String {
+        "Stacked-export-\(date.formatted(Date.ISO8601FormatStyle(timeZone: .current).year().month().day())).json"
+    }
+
+    func encoded() throws -> Data {
+        try JSONEncoder.gymAppEncoder.encode(data)
+    }
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(exportedContentType: .json) { export in
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent(export.fileName)
+            try export.encoded().write(to: url, options: [.atomic])
+            return SentTransferredFile(url)
+        }
+    }
 }
 
 private extension JSONEncoder {
